@@ -61,7 +61,7 @@ sudo apt install python3 python3-pyqt6 python3-watchdog
 From the repo folder:
 
 ```bash
-python3 ed_journal_probe.py
+python3 ed_journal_probe.py --history-files 300
 ```
 
 Or run with a full path:
