@@ -51,6 +51,8 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QTextEdit,
     QHeaderView,
+    QPushButton,
+    QFrame,
 )
 
 try:
@@ -1036,23 +1038,40 @@ class OverlayWindow(QWidget):
         super().__init__(flags=flags)
         self.monitor = monitor
 
+        self.opacity_enabled = True
+        self.normal_opacity = 0.78
+        self.solid_opacity = 1.0
+
         self.setWindowTitle("Paul Observatory")
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1120, 520)
-        self.setWindowOpacity(0.78)
+        self.setWindowOpacity(self.normal_opacity)
 
         self.system_label = QLabel()
         self.ship_label = QLabel()
         self.location_label = QLabel()
         self.count_label = QLabel()
         self.special_label = QLabel()
+        self.legend_label = QLabel(
+            "Legend  |  Bio: gray = expected, green = found, purple = complete  |  DSS: orange = needed, green = complete"
+        )
+        self.legend_label.setObjectName("legendLabel")
+
+        self.opacity_button = QPushButton("●")
+        self.opacity_button.setToolTip("Toggle transparency")
+        self.opacity_button.setFixedSize(28, 28)
+        self.opacity_button.clicked.connect(self.toggle_opacity)
+        self.opacity_button.setObjectName("opacityButton")
 
         self.table = QTableWidget()
         self.table.setColumnCount(10)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(True)
+
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Body", "Type", "Subtype", "Dist LS", "Bio", "Geo", "Mapped", "Bio Status", "Priority"]
+            ["ID", "Body", "Type", "Class", "Distance", "Bio", "Geo", "DSS", "Bio Progress", "Recommendation"]
         )
 
         table_header = self.table.horizontalHeader()
@@ -1067,58 +1086,111 @@ class OverlayWindow(QWidget):
         # Optional: keep the last column from auto-stretching instead of Bio Status.
         table_header.setStretchLastSection(False)
 
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(34)
+
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(110)
+        self.log_box.setMaximumHeight(85)
 
         header = QVBoxLayout()
-        header.addWidget(self.system_label)
-        header.addWidget(self.ship_label)
-        header.addWidget(self.special_label)
+        header.setSpacing(10)
 
-        row = QHBoxLayout()
-        row.addWidget(self.location_label)
-        row.addWidget(self.count_label)
-        header.addLayout(row)
+        top_row = QHBoxLayout()
+        top_row.addWidget(self.system_label, stretch=1)
+        top_row.addWidget(self.opacity_button, stretch=0)
+
+        ship_row = QHBoxLayout()
+        ship_row.addWidget(self.ship_label)
+        ship_row.addStretch()
+        ship_row.addWidget(self.location_label)
+
+        summary_row = QHBoxLayout()
+        summary_row.addWidget(self.count_label)
+        summary_row.addStretch()
+
+        header.addLayout(top_row)
+        header.addWidget(self.special_label)
+        header.addLayout(ship_row)
+        header.addLayout(summary_row)
 
         layout = QVBoxLayout()
         layout.addLayout(header)
         layout.addWidget(self.table)
+        layout.addWidget(self.legend_label)
         layout.addWidget(self.log_box)
         self.setLayout(layout)
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #101820;
-                color: #E8F0F2;
+                background-color: #0F1720;
+                color: #E6EDF3;
                 font-size: 13px;
             }
+
             QLabel {
+                color: #E6EDF3;
                 font-size: 14px;
                 padding: 2px;
             }
+
+            QLabel#legendLabel {
+                background-color: #16202A;
+                color: #C7D0D9;
+                font-size: 12px;
+                padding: 7px;
+                border: 1px solid #2A3A48;
+                border-radius: 8px;
+            }
+
             QTableWidget {
-                background-color: #18242E;
-                gridline-color: #344955;
-                selection-background-color: #34515E;
+                background-color: #111A22;
+                alternate-background-color: #13202A;
+                color: #E6EDF3;
+                gridline-color: #243342;
+                selection-background-color: #27445C;
+                border: 1px solid #2A3A48;
+                border-radius: 10px;
             }
+
             QHeaderView::section {
-                background-color: #243642;
-                color: #E8F0F2;
-                padding: 4px;
+                background-color: #1E2B36;
+                color: #DCE6EE;
+                padding: 6px;
+                border: none;
+                border-right: 1px solid #2A3A48;
             }
+
             QTextEdit {
                 background-color: #0B1117;
                 color: #A7FF83;
+                border: 1px solid #2A3A48;
+                border-radius: 10px;
+                padding: 6px;
+            }
+
+            QPushButton#opacityButton {
+                background-color: #1E2B36;
+                color: #F59E0B;
+                border: 1px solid #3A4A58;
+                border-radius: 14px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+
+            QPushButton#opacityButton:hover {
+                background-color: #2A3A48;
             }
         """)
 
         self.special_label.setStyleSheet("""
             QLabel {
-                background-color: #26323D;
-                color: #C7D0D9;
+                background-color: #4A102A;
+                color: #FFD700;
                 font-weight: bold;
-                padding: 4px;
+                padding: 8px;
+                border: 1px solid #8A3A5A;
+                border-radius: 10px;
             }
         """)
 
@@ -1251,13 +1323,41 @@ class OverlayWindow(QWidget):
         layout.addStretch()
         return container
 
+    def toggle_opacity(self) -> None:
+        self.opacity_enabled = not self.opacity_enabled
+
+        if self.opacity_enabled:
+            self.setWindowOpacity(self.normal_opacity)
+            self.opacity_button.setText("●")
+        else:
+            self.setWindowOpacity(self.solid_opacity)
+            self.opacity_button.setText("○")
+
     def refresh(self) -> None:
         state = self.monitor.state
 
         if state.special_alerts:
             self.special_label.setText(f"!!! SPECIAL: {state.special_alerts[-1]}")
+            self.special_label.setStyleSheet("""
+                QLabel {
+                    background-color: #4A102A;
+                    color: #FFD700;
+                    font-weight: bold;
+                    padding: 8px;
+                    border-radius: 8px;
+                }
+            """)
         else:
             self.special_label.setText("Special: none detected in this system")
+            self.special_label.setStyleSheet("""
+                QLabel {
+                    background-color: #26323D;
+                    color: #C7D0D9;
+                    font-weight: bold;
+                    padding: 8px;
+                    border-radius: 8px;
+                }
+            """)
 
         system = state.system or "Unknown system"
         target = state.nav_target or "none"
@@ -1268,9 +1368,9 @@ class OverlayWindow(QWidget):
         )
 
         ship = state.ship_name or friendly_ship_name(state.ship)
-        suit = state.suit or "Unknown suit"
         mode = "On Foot" if state.on_foot else "In Ship"
-        self.ship_label.setText(f"Mode: {mode}    Ship: {ship}    Suit: {suit}")
+
+        self.ship_label.setText(f"Ship: {ship}    Mode: {mode}")
 
         where = state.station or state.body or "space"
         latlon = ""
@@ -1376,11 +1476,11 @@ class OverlayWindow(QWidget):
                 # dark gray = known body but not fully scanned/classified yet
 
                 if high_value and body.mapped is not True:
-                    item.setBackground(QBrush(QColor("#6B1F1F")))
+                    item.setBackground(QBrush(QColor("#4A1F24")))
                     item.setForeground(QBrush(QColor("#FFFFFF")))
 
                 elif high_value and body.mapped is True:
-                    item.setBackground(QBrush(QColor("#1F4F6B")))
+                    item.setBackground(QBrush(QColor("#17324A")))
                     item.setForeground(QBrush(QColor("#FFFFFF")))
 
                 elif body.bio_signals and body.bio_signals > 0:
@@ -1395,19 +1495,25 @@ class OverlayWindow(QWidget):
                             item.setForeground(QBrush(QColor("#FFFFFF")))
 
                 elif body.scanned is False:
-                    item.setBackground(QBrush(QColor("#3A3A3A")))
+                    item.setBackground(QBrush(QColor("#26323D")))
                     item.setForeground(QBrush(QColor("#DDDDDD")))
 
                 # Make the Mapped cell extra obvious.
+                # Make the DSS cell look like a small status pill.
                 if col == 7 and can_be_dss_mapped:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
                     if high_value and body.mapped is not True:
-                        item.setBackground(QBrush(QColor("#B00020")))
+                        item.setText("DSS Needed")
+                        item.setBackground(QBrush(QColor("#7F1D1D")))
                         item.setForeground(QBrush(QColor("#FFFFFF")))
                     elif body.mapped is False:
-                        item.setBackground(QBrush(QColor("#8A5A00")))
+                        item.setText("No")
+                        item.setBackground(QBrush(QColor("#A16207")))
                         item.setForeground(QBrush(QColor("#FFFFFF")))
                     elif body.mapped is True:
-                        item.setBackground(QBrush(QColor("#1B5E20")))
+                        item.setText("Yes")
+                        item.setBackground(QBrush(QColor("#2E7D32")))
                         item.setForeground(QBrush(QColor("#FFFFFF")))
 
                 self.table.setItem(row, col, item)
