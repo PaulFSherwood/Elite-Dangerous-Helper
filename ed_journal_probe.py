@@ -50,6 +50,7 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
+    QHeaderView,
 )
 
 try:
@@ -105,6 +106,10 @@ class CommanderState:
     body: Optional[str] = None
     station: Optional[str] = None
     docked: bool = False
+
+    nav_route: list[str] = field(default_factory=list)
+    nav_target: Optional[str] = None
+    nav_final: Optional[str] = None
 
     body_count: Optional[int] = None
     system_body_cache: dict[str, dict[str, BodyInfo]] = field(default_factory=dict)
@@ -227,7 +232,13 @@ def set_system(state: CommanderState, system: Optional[str], address: Optional[i
         state.station = None
         state.docked = False
 
+        # Clear old alert banner when entering a new system.
+        # The log still keeps history, but the top banner should reflect this system.
+        state.special_alerts.clear()
+        state.special_seen.clear()
+
         restore_cached_system(state)
+        update_nav_target(state)
 
         state.log(f"Entered system: {system}")
 
@@ -437,6 +448,106 @@ def resolve_organic_body_name(state: CommanderState, event: dict) -> Optional[st
         return bio_bodies[0]
 
     return None
+SHIP_NAME_MAP = {
+    "sidewinder": "Sidewinder",
+    "eagle": "Eagle",
+    "hauler": "Hauler",
+    "adder": "Adder",
+    "viper": "Viper",
+    "viper_mkiv": "Viper Mk IV",
+    "cobra_mkiii": "Cobra Mk III",
+    "cobra_mkiv": "Cobra Mk IV",
+    "diamondback": "Diamondback Scout",
+    "diamondbackxl": "Diamondback Explorer",
+    "type6": "Type-6 Transporter",
+    "dolphin": "Dolphin",
+    "asp": "Asp Scout",
+    "asp_scout": "Asp Scout",
+    "asp_explorer": "Asp Explorer",
+    "vulture": "Vulture",
+    "empire_courier": "Imperial Courier",
+    "federation_dropship": "Federal Dropship",
+    "type7": "Type-7 Transporter",
+    "alliance_chieftain": "Alliance Chieftain",
+    "alliance_crusader": "Alliance Crusader",
+    "alliance_challenger": "Alliance Challenger",
+    "krait_mkii": "Krait Mk II",
+    "krait_light": "Krait Phantom",
+    "python": "Python",
+    "python_nx": "Python Mk II",
+    "type8": "Type-8 Transporter",
+    "type9": "Type-9 Heavy",
+    "type10": "Type-10 Defender",
+    "anaconda": "Anaconda",
+    "federation_corvette": "Federal Corvette",
+    "cutter": "Imperial Cutter",
+    "belugaliner": "Beluga Liner",
+    "orca": "Orca",
+    "mamba": "Mamba",
+    "ferdelance": "Fer-de-Lance",
+    "panthermkii": "Panther Clipper Mk II",
+}
+
+def friendly_ship_name(raw_name: Optional[str]) -> str:
+    if not raw_name:
+        return "Unknown ship"
+
+    key = raw_name.strip().lower()
+    return SHIP_NAME_MAP.get(key, raw_name)
+
+def update_nav_target(state: CommanderState) -> None:
+    if not state.nav_route:
+        state.nav_target = None
+        state.nav_final = None
+        return
+
+    state.nav_final = state.nav_route[-1]
+
+    if not state.system:
+        state.nav_target = state.nav_route[0]
+        return
+
+    current_lower = state.system.lower()
+
+    for index, system_name in enumerate(state.nav_route):
+        if system_name.lower() == current_lower:
+            next_index = index + 1
+            if next_index < len(state.nav_route):
+                state.nav_target = state.nav_route[next_index]
+            else:
+                state.nav_target = None
+            return
+
+    # If current system is not in route, keep first route item as target.
+    state.nav_target = state.nav_route[0]
+
+def read_nav_route(state: CommanderState, journal_dir: Path) -> None:
+    nav_path = journal_dir / "NavRoute.json"
+
+    if not nav_path.exists():
+        state.nav_route = []
+        state.nav_target = None
+        state.nav_final = None
+        return
+
+    try:
+        with nav_path.open("r", encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+    except Exception as exc:
+        state.log(f"NavRoute read error: {exc}")
+        return
+
+    route = []
+    for item in data.get("Route", []):
+        system_name = item.get("StarSystem")
+        if system_name:
+            route.append(system_name)
+
+    state.nav_route = route
+    update_nav_target(state)
+
+    if route:
+        state.log(f"NavRoute loaded: {len(route)} systems")
 
 def apply_event(state: CommanderState, event: dict) -> bool:
     name = event.get("event")
@@ -798,6 +909,7 @@ class JournalMonitor(QObject):
 
         self.position = self.current_file.stat().st_size
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
+        read_nav_route(self.state, self.journal_dir)
         self.state.log(f"Watching: {self.current_file.name}")
 
     def process_updates(self) -> None:
@@ -853,12 +965,32 @@ class JournalMonitor(QObject):
 
             class Handler(FileSystemEventHandler):
                 def on_modified(self, event):
-                    if not event.is_directory:
-                        monitor.process_updates()
+                    if event.is_directory:
+                        return
+
+                    path = Path(event.src_path)
+
+                    if path.name.lower() == "navroute.json":
+                        with monitor.lock:
+                            read_nav_route(monitor.state, monitor.journal_dir)
+                            monitor.updated.emit()
+                        return
+
+                    monitor.process_updates()
 
                 def on_created(self, event):
-                    if not event.is_directory:
-                        monitor.process_updates()
+                    if event.is_directory:
+                        return
+
+                    path = Path(event.src_path)
+
+                    if path.name.lower() == "navroute.json":
+                        with monitor.lock:
+                            read_nav_route(monitor.state, monitor.journal_dir)
+                            monitor.updated.emit()
+                        return
+
+                    monitor.process_updates()
 
                 def on_moved(self, event):
                     monitor.process_updates()
@@ -908,8 +1040,8 @@ class OverlayWindow(QWidget):
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(920, 520)
-        self.setWindowOpacity(0.92)
+        self.resize(1120, 520)
+        self.setWindowOpacity(0.78)
 
         self.system_label = QLabel()
         self.ship_label = QLabel()
@@ -922,6 +1054,18 @@ class OverlayWindow(QWidget):
         self.table.setHorizontalHeaderLabels(
             ["ID", "Body", "Type", "Subtype", "Dist LS", "Bio", "Geo", "Mapped", "Bio Status", "Priority"]
         )
+
+        table_header = self.table.horizontalHeader()
+
+        # Let normal columns size to their contents.
+        for col in range(10):
+            table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Let Bio Status take extra width when the window is stretched.
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+
+        # Optional: keep the last column from auto-stretching instead of Bio Status.
+        table_header.setStretchLastSection(False)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
@@ -971,8 +1115,8 @@ class OverlayWindow(QWidget):
 
         self.special_label.setStyleSheet("""
             QLabel {
-                background-color: #4A102A;
-                color: #FFD700;
+                background-color: #26323D;
+                color: #C7D0D9;
                 font-weight: bold;
                 padding: 4px;
             }
@@ -1113,12 +1257,17 @@ class OverlayWindow(QWidget):
         if state.special_alerts:
             self.special_label.setText(f"!!! SPECIAL: {state.special_alerts[-1]}")
         else:
-            self.special_label.setText("Special: none detected")
+            self.special_label.setText("Special: none detected in this system")
 
         system = state.system or "Unknown system"
-        self.system_label.setText(f"System: {system}    Last Event: {state.last_event or '?'}")
+        target = state.nav_target or "none"
+        final = state.nav_final or "none"
 
-        ship = state.ship_name or state.ship or "Unknown ship"
+        self.system_label.setText(
+            f"System: {system}    Target: {target}    Final: {final}    Event: {state.last_event or '?'}"
+        )
+
+        ship = state.ship_name or friendly_ship_name(state.ship)
         suit = state.suit or "Unknown suit"
         mode = "On Foot" if state.on_foot else "In Ship"
         self.ship_label.setText(f"Mode: {mode}    Ship: {ship}    Suit: {suit}")
@@ -1128,9 +1277,18 @@ class OverlayWindow(QWidget):
         if state.latitude is not None and state.longitude is not None:
             latlon = f"    Lat/Lon: {state.latitude:.4f}, {state.longitude:.4f}"
 
-        self.location_label.setText(f"Where: {where}{latlon}")
+        self.location_label.setText(f"Location: {where}{latlon}")
 
-        scanned_count = len([b for b in state.bodies.values() if b.scanned])
+        planet_star_scanned_count = len([
+            b for b in state.bodies.values()
+            if b.scanned and b.kind in ("Planet", "Star")
+        ])
+
+        other_scanned_count = len([
+            b for b in state.bodies.values()
+            if b.scanned and b.kind not in ("Planet", "Star")
+        ])
+
         total = state.body_count if state.body_count is not None else "?"
 
         high_value_unmapped = [
@@ -1143,8 +1301,13 @@ class OverlayWindow(QWidget):
             if b.bio_signals and b.bio_signals > 0
         ]
 
+        other_text = ""
+        if other_scanned_count > 0:
+            other_text = f"    Other scanned: {other_scanned_count}"
+
         self.count_label.setText(
-            f"Bodies: {scanned_count} scanned / {total} detected    "
+            f"Bodies: {planet_star_scanned_count} scanned / {total} detected"
+            f"{other_text}    "
             f"High-value unmapped: {len(high_value_unmapped)}    "
             f"Bio bodies: {len(bio_bodies)}"
         )
@@ -1256,7 +1419,7 @@ class OverlayWindow(QWidget):
             else:
                 self.table.removeCellWidget(row, 8)
 
-        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
         # auto scroll
         self.log_box.setPlainText("\n".join(state.messages))
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
