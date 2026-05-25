@@ -1030,6 +1030,55 @@ class OverlayWindow(QWidget):
 
         return len(body.bio_completed_species) >= body.bio_signals
 
+    def update_info_card(self, card: QFrame, icon: str, title: str, value: str) -> None:
+        layout = card.layout()
+        if layout is None:
+            return
+
+        icon_label = layout.itemAt(0).widget()
+        text_layout = layout.itemAt(1).layout()
+
+        if icon_label:
+            icon_label.setText(icon)
+
+        if text_layout:
+            title_label = text_layout.itemAt(0).widget()
+            value_label = text_layout.itemAt(1).widget()
+
+            if title_label:
+                title_label.setText(title)
+            if value_label:
+                value_label.setText(value)
+
+    def make_info_card(self, icon: str, title: str, value: str) -> QFrame:
+        card = QFrame()
+        card.setObjectName("infoCard")
+
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("cardIcon")
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(1)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("cardTitle")
+
+        value_label = QLabel(value)
+        value_label.setObjectName("cardValue")
+
+        text_box.addWidget(title_label)
+        text_box.addWidget(value_label)
+
+        layout.addWidget(icon_label)
+        layout.addLayout(text_box)
+        layout.addStretch()
+
+        return card
+
     def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
         flags = Qt.WindowType.Window
         if always_on_top:
@@ -1054,6 +1103,15 @@ class OverlayWindow(QWidget):
         self.location_label = QLabel()
         self.count_label = QLabel()
         self.special_label = QLabel()
+
+        self.ship_card = QFrame()
+        self.mode_card = QFrame()
+        self.location_card = QFrame()
+        self.bodies_card = QFrame()
+        self.other_card = QFrame()
+        self.high_value_card = QFrame()
+        self.bio_card = QFrame()
+
         self.legend_label = QLabel(
             "Legend  |  Bio: gray = expected, green = found, purple = complete  |  DSS: orange = needed, green = complete"
         )
@@ -1101,13 +1159,28 @@ class OverlayWindow(QWidget):
         top_row.addWidget(self.opacity_button, stretch=0)
 
         ship_row = QHBoxLayout()
-        ship_row.addWidget(self.ship_label)
-        ship_row.addStretch()
-        ship_row.addWidget(self.location_label)
-
+        ship_row.setSpacing(10)
+        
+        self.ship_card = self.make_info_card("🚀", "Ship", "Unknown ship")
+        self.mode_card = self.make_info_card("🧭", "Mode", "Unknown")
+        self.location_card = self.make_info_card("📍", "Location", "space")
+        
+        ship_row.addWidget(self.ship_card, stretch=2)
+        ship_row.addWidget(self.mode_card, stretch=1)
+        ship_row.addWidget(self.location_card, stretch=2)
+        
         summary_row = QHBoxLayout()
-        summary_row.addWidget(self.count_label)
-        summary_row.addStretch()
+        summary_row.setSpacing(10)
+        
+        self.bodies_card = self.make_info_card("◎", "Bodies", "? / ?")
+        self.other_card = self.make_info_card("✦", "Other", "0")
+        self.high_value_card = self.make_info_card("◇", "High-value", "0")
+        self.bio_card = self.make_info_card("☘", "Bio bodies", "0")
+        
+        summary_row.addWidget(self.bodies_card)
+        summary_row.addWidget(self.other_card)
+        summary_row.addWidget(self.high_value_card)
+        summary_row.addWidget(self.bio_card)
 
         header.addLayout(top_row)
         header.addWidget(self.special_label)
@@ -1141,6 +1214,29 @@ class OverlayWindow(QWidget):
                 padding: 7px;
                 border: 1px solid #2A3A48;
                 border-radius: 8px;
+            }
+
+            QFrame#infoCard {
+                background-color: #16202A;
+                border: 1px solid #2A3A48;
+                border-radius: 12px;
+            }
+            
+            QLabel#cardIcon {
+                color: #F59E0B;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            
+            QLabel#cardTitle {
+                color: #9FB0BF;
+                font-size: 12px;
+            }
+            
+            QLabel#cardValue {
+                color: #E6EDF3;
+                font-size: 15px;
+                font-weight: bold;
             }
 
             QTableWidget {
@@ -1370,14 +1466,17 @@ class OverlayWindow(QWidget):
         ship = state.ship_name or friendly_ship_name(state.ship)
         mode = "On Foot" if state.on_foot else "In Ship"
 
-        self.ship_label.setText(f"Ship: {ship}    Mode: {mode}")
+        ship_icon = "🧍" if state.on_foot else "🚀"
+        
+        self.update_info_card(self.ship_card, ship_icon, "Ship", ship)
+        self.update_info_card(self.mode_card, "🧭", "Mode", mode)
 
         where = state.station or state.body or "space"
         latlon = ""
         if state.latitude is not None and state.longitude is not None:
             latlon = f"    Lat/Lon: {state.latitude:.4f}, {state.longitude:.4f}"
 
-        self.location_label.setText(f"Location: {where}{latlon}")
+        self.update_info_card(self.location_card, "📍", "Location", f"{where}{latlon}")
 
         planet_star_scanned_count = len([
             b for b in state.bodies.values()
@@ -1405,11 +1504,32 @@ class OverlayWindow(QWidget):
         if other_scanned_count > 0:
             other_text = f"    Other scanned: {other_scanned_count}"
 
-        self.count_label.setText(
-            f"Bodies: {planet_star_scanned_count} scanned / {total} detected"
-            f"{other_text}    "
-            f"High-value unmapped: {len(high_value_unmapped)}    "
-            f"Bio bodies: {len(bio_bodies)}"
+        self.update_info_card(
+            self.bodies_card,
+            "◎",
+            "Bodies",
+            f"{planet_star_scanned_count} / {total}",
+        )
+        
+        self.update_info_card(
+            self.other_card,
+            "✦",
+            "Other scanned",
+            str(other_scanned_count),
+        )
+        
+        self.update_info_card(
+            self.high_value_card,
+            "◇",
+            "High-value",
+            str(len(high_value_unmapped)),
+        )
+        
+        self.update_info_card(
+            self.bio_card,
+            "☘",
+            "Bio bodies",
+            str(len(bio_bodies)),
         )
 
         def body_sort_key(b: BodyInfo):
