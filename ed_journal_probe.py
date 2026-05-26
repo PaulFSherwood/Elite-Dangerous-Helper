@@ -53,6 +53,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QPushButton,
     QFrame,
+    QSizePolicy,
 )
 
 try:
@@ -1114,16 +1115,25 @@ class OverlayWindow(QWidget):
 
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
+        title_label.setMinimumWidth(0)
+        title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
 
         value_label = QLabel(value)
         value_label.setObjectName("cardValue")
+        value_label.setMinimumWidth(0)
+        value_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
 
         text_box.addWidget(title_label)
         text_box.addWidget(value_label)
 
         layout.addWidget(icon_label)
-        layout.addLayout(text_box)
-        layout.addStretch()
+        layout.addLayout(text_box, stretch=1)
 
         return card
 
@@ -1135,6 +1145,9 @@ class OverlayWindow(QWidget):
         super().__init__(flags=flags)
         self.monitor = monitor
 
+        self.resize(1280, 760)
+        self.setMinimumSize(900, 500)
+
         self.opacity_enabled = True
         self.normal_opacity = 0.78
         self.solid_opacity = 1.0
@@ -1143,7 +1156,6 @@ class OverlayWindow(QWidget):
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1500, 760)
         self.setWindowOpacity(self.normal_opacity)
 
         self.system_label = QLabel()
@@ -1226,19 +1238,19 @@ class OverlayWindow(QWidget):
         )
 
         table_header = self.table.horizontalHeader()
-        
+
         for col in range(10):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
-        
-        # Bio Progress gets calculated width in refresh().
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        
-        # Recommendation gets leftover room.
-        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
-        
-        table_header.setStretchLastSection(False)
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        # Recommendation stays fixed so it cannot steal width.
+        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(9, 80)
+
+        # Bio Progress gets the extra width.
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(8, 100)
+
+        table_header.setStretchLastSection(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.table.verticalHeader().setVisible(False)
@@ -1358,6 +1370,8 @@ class OverlayWindow(QWidget):
         layout.addLayout(bottom_row, stretch=0)
         layout.addWidget(self.footer_label)
         self.setLayout(layout)
+        print("minimum:", self.minimumSizeHint().width(), self.minimumSizeHint().height())
+        print("current:", self.width(), self.height())
 
         self.setStyleSheet("""
             QWidget {
@@ -1742,7 +1756,7 @@ class OverlayWindow(QWidget):
         where = state.station or state.body or "space"
         latlon = ""
         if state.latitude is not None and state.longitude is not None:
-            latlon = f"    Lat/Lon: {state.latitude:.4f}, {state.longitude:.4f}"
+            latlon = f"  {state.latitude:.2f}, {state.longitude:.2f}"
 
         self.update_info_card(self.location_card, "📍", "Location", f"{where}{latlon}")
 
@@ -1832,19 +1846,6 @@ class OverlayWindow(QWidget):
                 state.bodies.values(),
                 key=body_sort_key,
                 )
-
-        max_bio_pills = 0
-        
-        for body in bodies:
-            expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
-        
-            if not expected and body.bio_signals:
-                expected = [f"Bio {i + 1}" for i in range(body.bio_signals)]
-        
-            max_bio_pills = max(max_bio_pills, len(expected))
-        
-        bio_column_width = max(220, min(560, max_bio_pills * 95))
-        self.table.setColumnWidth(8, bio_column_width)
 
         self.table.setRowCount(len(bodies))
 
