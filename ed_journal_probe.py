@@ -1143,20 +1143,37 @@ class OverlayWindow(QWidget):
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1120, 620)
+        self.resize(1500, 760)
         self.setWindowOpacity(self.normal_opacity)
 
         self.system_label = QLabel()
         self.ship_label = QLabel()
         self.location_label = QLabel()
         self.count_label = QLabel()
-        self.special_label = QLabel()
+        self.special_card = QFrame()
+        self.special_card.setObjectName("specialCard")
+        
+        self.special_icon_label = QLabel("✦")
+        self.special_icon_label.setObjectName("specialIcon")
+        
+        self.special_label = QLabel("Special: none detected in this system")
+        self.special_label.setObjectName("specialText")
+        
+        special_layout = QHBoxLayout(self.special_card)
+        special_layout.setContentsMargins(14, 8, 14, 8)
+        special_layout.setSpacing(10)
+        special_layout.addWidget(self.special_icon_label)
+        special_layout.addWidget(self.special_label)
+        special_layout.addStretch()
 
         self.log_title_label = QLabel("Journal Log")
         self.log_title_label.setObjectName("sectionTitle")
 
         self.legend_title_label = QLabel("Legend")
         self.legend_title_label.setObjectName("sectionTitle")
+
+        self.footer_label = QLabel()
+        self.footer_label.setObjectName("footerLabel")
 
         self.ship_card = QFrame()
         self.mode_card = QFrame()
@@ -1166,24 +1183,36 @@ class OverlayWindow(QWidget):
         self.high_value_card = QFrame()
         self.bio_card = QFrame()
 
-        self.legend_label = QLabel(
-            "Bio Progress\n"
-            "  gray  = expected / not found\n"
-            "  green = found / sampling\n"
-            "  purple = complete\n\n"
-            "DSS\n"
-            "  orange = mapping needed\n"
-            "  green  = DSS complete\n\n"
-            "Rows\n"
-            "  red   = high-value unmapped\n"
-            "  blue  = high-value mapped\n"
-            "  green = biological signals"
-        )
+        self.legend_label = QLabel("""
+        <table cellspacing="6" cellpadding="2">
+        <tr>
+        <td><b>Bio Progress</b></td>
+        <td><span style="background-color:#3A3A3A; color:#3A3A3A;">■■</span> expected</td>
+        <td><span style="background-color:#1F5A32; color:#1F5A32;">■■</span> found</td>
+        <td><span style="background-color:#CBC3E3; color:#CBC3E3;">■■</span> complete</td>
+        </tr>
+        <tr>
+        <td><b>DSS</b></td>
+        <td><span style="background-color:#A16207; color:#A16207;">■■</span> needed</td>
+        <td><span style="background-color:#2E7D32; color:#2E7D32;">■■</span> complete</td>
+        <td><span style="background-color:#26323D; color:#26323D;">■■</span> not applicable</td>
+        </tr>
+        <tr>
+        <td><b>Rows</b></td>
+        <td><span style="background-color:#4A1F24; color:#4A1F24;">■■</span> high-value unmapped</td>
+        <td><span style="background-color:#17324A; color:#17324A;">■■</span> high-value mapped</td>
+        <td><span style="background-color:#1F5A32; color:#1F5A32;">■■</span> bio signals</td>
+        </tr>
+        </table>
+        """)
+        self.legend_label.setTextFormat(Qt.TextFormat.RichText)
         self.legend_label.setObjectName("legendLabel")
 
-        self.opacity_button = QPushButton("●")
-        self.opacity_button.setToolTip("Toggle transparency")
-        self.opacity_button.setFixedSize(28, 28)
+        self.legend_label.setObjectName("legendLabel")
+
+        self.opacity_button = QPushButton("●\n│\n○")
+        self.opacity_button.setToolTip("Toggle transparency / solid")
+        self.opacity_button.setFixedSize(28, 58)
         self.opacity_button.clicked.connect(self.toggle_opacity)
         self.opacity_button.setObjectName("opacityButton")
 
@@ -1197,19 +1226,19 @@ class OverlayWindow(QWidget):
         )
 
         table_header = self.table.horizontalHeader()
-
-        # Let normal columns size to their contents.
+        
         for col in range(10):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
-
-        # Bio Progress gets the extra space.
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        # self.table.setColumnWidth(8, 360)
         
-        # Recommendation should not steal all the width.
+        # Bio Progress gets calculated width in refresh().
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        
+        # Recommendation gets leftover room.
         table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         
         table_header.setStretchLastSection(False)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.table.verticalHeader().setVisible(False)
@@ -1223,49 +1252,72 @@ class OverlayWindow(QWidget):
         header = QVBoxLayout()
         header.setSpacing(10)
 
-        top_row = QHBoxLayout()
-        top_row.setSpacing(10)
-        
+        # Top route card: System / Target / Final / Event
+        route_card = QFrame()
+        route_card.setObjectName("wideCard")
+
+        route_layout = QHBoxLayout(route_card)
+        route_layout.setContentsMargins(12, 8, 12, 8)
+        route_layout.setSpacing(10)
+
         self.system_card = self.make_info_card("◎", "System", "Unknown")
         self.target_card = self.make_info_card("➜", "Target", "none")
         self.final_card = self.make_info_card("◆", "Final", "none")
         self.event_card = self.make_info_card("✦", "Event", "?")
-        
-        top_row.addWidget(self.system_card, stretch=2)
-        top_row.addWidget(self.target_card, stretch=2)
-        top_row.addWidget(self.final_card, stretch=2)
-        top_row.addWidget(self.event_card, stretch=1)
-        top_row.addWidget(self.opacity_button, stretch=0) 
 
+        route_layout.addWidget(self.system_card, stretch=2)
+        route_layout.addWidget(self.target_card, stretch=2)
+        route_layout.addWidget(self.final_card, stretch=2)
+        route_layout.addWidget(self.event_card, stretch=1)
 
-        ship_row = QHBoxLayout()
+        top_row = QHBoxLayout()
+        top_row.setSpacing(10)
+        top_row.addWidget(route_card, stretch=1)
+        top_row.addWidget(self.opacity_button, stretch=0)
+
+        # Middle left card: Ship / Mode / Location
+        ship_status_card = QFrame()
+        ship_status_card.setObjectName("wideCard")
+
+        ship_row = QHBoxLayout(ship_status_card)
+        ship_row.setContentsMargins(12, 8, 12, 8)
         ship_row.setSpacing(10)
-        
+
         self.ship_card = self.make_info_card("🚀", "Ship", "Unknown ship")
         self.mode_card = self.make_info_card("🧭", "Mode", "Unknown")
         self.location_card = self.make_info_card("📍", "Location", "space")
-        
+
         ship_row.addWidget(self.ship_card, stretch=2)
         ship_row.addWidget(self.mode_card, stretch=1)
         ship_row.addWidget(self.location_card, stretch=2)
-        
-        summary_row = QHBoxLayout()
+
+        # Middle right card: Bodies / Other / High-value / Bio
+        summary_status_card = QFrame()
+        summary_status_card.setObjectName("wideCard")
+
+        summary_row = QHBoxLayout(summary_status_card)
+        summary_row.setContentsMargins(12, 8, 12, 8)
         summary_row.setSpacing(10)
-        
+
         self.bodies_card = self.make_info_card("◎", "Bodies", "? / ?")
         self.other_card = self.make_info_card("✦", "Other", "0")
         self.high_value_card = self.make_info_card("◇", "High-value", "0")
         self.bio_card = self.make_info_card("☘", "Bio bodies", "0")
-        
+
         summary_row.addWidget(self.bodies_card)
         summary_row.addWidget(self.other_card)
         summary_row.addWidget(self.high_value_card)
         summary_row.addWidget(self.bio_card)
 
+        middle_row = QHBoxLayout()
+        middle_row.setSpacing(10)
+        middle_row.addWidget(ship_status_card, stretch=1)
+        middle_row.addWidget(summary_status_card, stretch=1)
+
+        # Final header order
+        header.addWidget(self.special_card)
         header.addLayout(top_row)
-        header.addWidget(self.special_label)
-        header.addLayout(ship_row)
-        header.addLayout(summary_row)
+        header.addLayout(middle_row)
 
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(10)
@@ -1304,6 +1356,7 @@ class OverlayWindow(QWidget):
         layout.addLayout(header)
         layout.addWidget(self.table, stretch=1)
         layout.addLayout(bottom_row, stretch=0)
+        layout.addWidget(self.footer_label)
         self.setLayout(layout)
 
         self.setStyleSheet("""
@@ -1321,9 +1374,42 @@ class OverlayWindow(QWidget):
             }
 
             QFrame#infoCard {
+                background-color: transparent;
+                border: none;
+                border-radius: 8px;
+            }
+
+            QFrame#specialCard {
                 background-color: #16202A;
                 border: 1px solid #2A3A48;
+                border-radius: 10px;
+            }
+
+            QFrame#wideCard {
+                background-color: #121C26;
+                border: 1px solid #2A3A48;
                 border-radius: 12px;
+            }
+            
+            QLabel#specialText {
+                background-color: transparent;
+                color: #E6EDF3;
+                font-size: 15px;
+                font-weight: bold;
+            }
+            
+            QLabel#footerLabel {
+                background-color: transparent;
+                color: #9FB0BF;
+                font-size: 12px;
+                padding: 4px 8px;
+            }
+            
+            QLabel#legendLabel {
+                background-color: transparent;
+                color: #C7D0D9;
+                font-size: 12px;
+                padding: 4px;
             }
 
             QFrame#bottomCard {
@@ -1400,8 +1486,9 @@ class OverlayWindow(QWidget):
                 color: #F59E0B;
                 border: 1px solid #3A4A58;
                 border-radius: 14px;
-                font-size: 16px;
+                font-size: 12px;
                 font-weight: bold;
+                padding: 0px;
             }
 
             QPushButton#opacityButton:hover {
@@ -1492,6 +1579,30 @@ class OverlayWindow(QWidget):
 
         return False
 
+    def make_class_pill_widget(self, text: str, color: str, text_color: str = "#FFFFFF", row_color: str = "transparent", ) -> QWidget:
+        container = QWidget()
+        container.setStyleSheet(f"QWidget {{ background-color: {row_color}; }}")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(0)
+
+        label = QLabel(text)
+        label.setFixedHeight(24)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {color};
+                color: {text_color};
+                border-radius: 6px;
+                padding: 1px 8px;
+                font-weight: bold;
+            }}
+        """)
+
+        layout.addWidget(label)
+        layout.addStretch()
+        return container
+
     def make_bio_status_widget(self, body: BodyInfo) -> QWidget:
         container = QWidget()
         layout = QHBoxLayout(container)
@@ -1553,39 +1664,54 @@ class OverlayWindow(QWidget):
         layout.addStretch()
         return container
 
+
     def toggle_opacity(self) -> None:
         self.opacity_enabled = not self.opacity_enabled
 
         if self.opacity_enabled:
             self.setWindowOpacity(self.normal_opacity)
-            self.opacity_button.setText("●")
+            self.opacity_button.setText("●\n│\n○")
         else:
             self.setWindowOpacity(self.solid_opacity)
-            self.opacity_button.setText("○")
+            self.opacity_button.setText("○\n│\n●")
 
     def refresh(self) -> None:
         state = self.monitor.state
 
         if state.special_alerts:
-            self.special_label.setText(f"!!! SPECIAL: {state.special_alerts[-1]}")
-            self.special_label.setStyleSheet("""
-                QLabel {
+            self.special_icon_label.setText("✦")
+            self.special_label.setText(f"Special: {state.special_alerts[-1]}")
+            self.special_card.setStyleSheet("""
+                QFrame#specialCard {
                     background-color: #4A102A;
+                    border: 1px solid #8A3A5A;
+                    border-radius: 10px;
+                }
+            """)
+            self.special_icon_label.setStyleSheet("""
+                QLabel#specialIcon {
+                    background-color: transparent;
                     color: #FFD700;
+                    font-size: 20px;
                     font-weight: bold;
-                    padding: 8px;
-                    border-radius: 8px;
                 }
             """)
         else:
+            self.special_icon_label.setText("✦")
             self.special_label.setText("Special: none detected in this system")
-            self.special_label.setStyleSheet("""
-                QLabel {
-                    background-color: #26323D;
-                    color: #C7D0D9;
+            self.special_card.setStyleSheet("""
+                QFrame#specialCard {
+                    background-color: #16202A;
+                    border: 1px solid #2A3A48;
+                    border-radius: 10px;
+                }
+            """)
+            self.special_icon_label.setStyleSheet("""
+                QLabel#specialIcon {
+                    background-color: transparent;
+                    color: #F59E0B;
+                    font-size: 20px;
                     font-weight: bold;
-                    padding: 8px;
-                    border-radius: 8px;
                 }
             """)
 
@@ -1703,12 +1829,12 @@ class OverlayWindow(QWidget):
             )
 
         bodies = sorted(
-            state.bodies.values(),
-            key=body_sort_key,
-        )
+                state.bodies.values(),
+                key=body_sort_key,
+                )
 
         max_bio_pills = 0
-
+        
         for body in bodies:
             expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
         
@@ -1717,7 +1843,7 @@ class OverlayWindow(QWidget):
         
             max_bio_pills = max(max_bio_pills, len(expected))
         
-        bio_column_width = max(220, min(520, max_bio_pills * 95))
+        bio_column_width = max(220, min(560, max_bio_pills * 95))
         self.table.setColumnWidth(8, bio_column_width)
 
         self.table.setRowCount(len(bodies))
@@ -1793,12 +1919,45 @@ class OverlayWindow(QWidget):
 
                 self.table.setItem(row, col, item)
 
+                # Class column pill for special world types.
+                subtype_lower = (body.subtype or "").lower()
+                row_color = "transparent"
+
+                if high_value and body.mapped is not True:
+                    row_color = "#4A1F24"
+                elif high_value and body.mapped is True:
+                    row_color = "#17324A"
+                elif body.scanned is False:
+                    row_color = "#26323D"
+
+                if "earthlike" in subtype_lower or "earth-like" in subtype_lower:
+                    self.table.setCellWidget(
+                        row,
+                        3,
+                        self.make_class_pill_widget(body.subtype, "#1F5A32", row_color=row_color),
+                    )
+                elif "water world" in subtype_lower:
+                    self.table.setCellWidget(
+                        row,
+                        3,
+                        self.make_class_pill_widget(body.subtype, "#1F4F6B", row_color=row_color),
+                    )
+                else:
+                    self.table.removeCellWidget(row, 3)
+
             # Bios Status pill split
             if body.bio_signals and body.bio_signals > 0:
                 self.table.setCellWidget(row, 8, self.make_bio_status_widget(body))
                 self.table.setRowHeight(row, 32)
             else:
                 self.table.removeCellWidget(row, 8)
+
+        commander = state.commander or "Unknown"
+        footer_ship = state.ship_name or friendly_ship_name(state.ship)
+
+        self.footer_label.setText(
+                f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
+                )
 
         # Keep rows compact even when Bio progress contains widgets
         for row in range(self.table.rowCount()):
