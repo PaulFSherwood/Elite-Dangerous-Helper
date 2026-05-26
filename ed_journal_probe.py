@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon
+from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon, QPixmap
 from PyQt6.QtCore import Qt, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
@@ -450,52 +450,79 @@ def resolve_organic_body_name(state: CommanderState, event: dict) -> Optional[st
         return bio_bodies[0]
 
     return None
-SHIP_NAME_MAP = {
-    "sidewinder": "Sidewinder",
-    "eagle": "Eagle",
-    "hauler": "Hauler",
-    "adder": "Adder",
-    "viper": "Viper",
-    "viper_mkiv": "Viper Mk IV",
-    "cobra_mkiii": "Cobra Mk III",
-    "cobra_mkiv": "Cobra Mk IV",
-    "diamondback": "Diamondback Scout",
-    "diamondbackxl": "Diamondback Explorer",
-    "type6": "Type-6 Transporter",
-    "dolphin": "Dolphin",
-    "asp": "Asp Scout",
-    "asp_scout": "Asp Scout",
-    "asp_explorer": "Asp Explorer",
-    "vulture": "Vulture",
-    "empire_courier": "Imperial Courier",
-    "federation_dropship": "Federal Dropship",
-    "type7": "Type-7 Transporter",
-    "alliance_chieftain": "Alliance Chieftain",
-    "alliance_crusader": "Alliance Crusader",
-    "alliance_challenger": "Alliance Challenger",
-    "krait_mkii": "Krait Mk II",
-    "krait_light": "Krait Phantom",
-    "python": "Python",
-    "python_nx": "Python Mk II",
-    "type8": "Type-8 Transporter",
-    "type9": "Type-9 Heavy",
-    "type10": "Type-10 Defender",
-    "anaconda": "Anaconda",
-    "federation_corvette": "Federal Corvette",
-    "cutter": "Imperial Cutter",
-    "belugaliner": "Beluga Liner",
-    "orca": "Orca",
-    "mamba": "Mamba",
-    "ferdelance": "Fer-de-Lance",
-    "panthermkii": "Panther Clipper Mk II",
+
+SHIP_INFO_MAP = {
+    "sidewinder": ("Sidewinder", "sidewinder.png"),
+    "eagle": ("Eagle", "eagle.png"),
+    "hauler": ("Hauler", "hauler.png"),
+    "adder": ("Adder", "adder.png"),
+
+    "viper": ("Viper", "viper.png"),
+    "viper_mkiv": ("Viper Mk IV", "viper_mkiv.png"),
+    "cobra_mkiii": ("Cobra Mk III", "cobra_mkiii.png"),
+    "cobra_mkiv": ("Cobra Mk IV", "cobra_mkiv.png"),
+
+    "diamondback": ("Diamondback Scout", "diamondback.png"),
+    "diamondbackxl": ("Diamondback Explorer", "diamondbackxl.png"),
+
+    "type6": ("Type-6 Transporter", "type6.png"),
+    "type7": ("Type-7 Transporter", "type7.png"),
+    "type8": ("Type-8 Transporter", "type8.png"),
+    "type9": ("Type-9 Heavy", "type9.png"),
+    "type10": ("Type-10 Defender", "type10.png"),
+
+    "dolphin": ("Dolphin", "dolphin.png"),
+    "orca": ("Orca", "orca.png"),
+    "belugaliner": ("Beluga Liner", "belugaliner.png"),
+
+    "asp": ("Asp Scout", "asp.png"),
+    "asp_scout": ("Asp Scout", "asp_scout.png"),
+    "asp_explorer": ("Asp Explorer", "asp_explorer.png"),
+
+    "vulture": ("Vulture", "vulture.png"),
+    "mamba": ("Mamba", "mamba.png"),
+    "ferdelance": ("Fer-de-Lance", "ferdelance.png"),
+
+    "empire_courier": ("Imperial Courier", "empire_courier.png"),
+    "cutter": ("Imperial Cutter", "cutter.png"),
+
+    "federation_dropship": ("Federal Dropship", "federation_dropship.png"),
+    "federation_corvette": ("Federal Corvette", "federation_corvette.png"),
+
+    "alliance_chieftain": ("Alliance Chieftain", "alliance_chieftain.png"),
+    "alliance_crusader": ("Alliance Crusader", "alliance_crusader.png"),
+    "alliance_challenger": ("Alliance Challenger", "alliance_challenger.png"),
+
+    "krait_mkii": ("Krait Mk II", "krait_mkii.png"),
+    "krait_light": ("Krait Phantom", "krait_light.png"),
+
+    "python": ("Python", "python.png"),
+    "python_nx": ("Python Mk II", "python_nx.png"),
+
+    "anaconda": ("Anaconda", "anaconda.png"),
+    "panthermkii": ("Panther Clipper Mk II", "panthermkii.png"),
 }
 
-def friendly_ship_name(raw_name: Optional[str]) -> str:
+
+def friendly_ship_info(raw_name: Optional[str]) -> tuple[str, str]:
     if not raw_name:
-        return "Unknown ship"
+        return ("Unknown ship", "unknown_ship.png")
 
     key = raw_name.strip().lower()
-    return SHIP_NAME_MAP.get(key, raw_name)
+    return SHIP_INFO_MAP.get(key, (raw_name, "unknown_ship.png"))
+
+
+def friendly_ship_name(raw_name: Optional[str]) -> str:
+    return friendly_ship_info(raw_name)[0]
+
+
+def friendly_ship_icon_path(raw_name: Optional[str]) -> Path:
+    _, icon_file = friendly_ship_info(raw_name)
+    return Path(__file__).resolve().parent / "assets" / "ships" / icon_file
+
+
+def on_foot_icon_path() -> Path:
+    return Path(__file__).resolve().parent / "assets" / "ships" / "on_foot.png"
 
 def update_nav_target(state: CommanderState) -> None:
     if not state.nav_route:
@@ -847,7 +874,7 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         changed = True
 
     elif name == "Touchdown":
-        state.on_foot = True
+        # Ship landed
         state.body = event.get("Body", state.body)
         state.latitude = event.get("Latitude", state.latitude)
         state.longitude = event.get("Longitude", state.longitude)
@@ -1030,6 +1057,76 @@ class OverlayWindow(QWidget):
 
         return len(body.bio_completed_species) >= body.bio_signals
 
+    def update_info_card(
+        self,
+        card: QFrame,
+        icon: str,
+        title: str,
+        value: str,
+        icon_path: Optional[Path] = None,
+    ) -> None:
+        layout = card.layout()
+        if layout is None:
+            return
+
+        icon_label = layout.itemAt(0).widget()
+        text_layout = layout.itemAt(1).layout()
+
+        if icon_label:
+            if icon_path and icon_path.exists():
+                pixmap = QPixmap(str(icon_path))
+                pixmap = pixmap.scaled(
+                    30,
+                    30,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                icon_label.setPixmap(pixmap)
+                icon_label.setText("")
+            else:
+                icon_label.setPixmap(QPixmap())
+                icon_label.setText(icon)
+
+        if text_layout:
+            title_label = text_layout.itemAt(0).widget()
+            value_label = text_layout.itemAt(1).widget()
+
+            if title_label:
+                title_label.setText(title)
+            if value_label:
+                value_label.setText(value)
+
+    def make_info_card(self, icon: str, title: str, value: str) -> QFrame:
+        card = QFrame()
+        card.setObjectName("infoCard")
+
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("cardIcon")
+        icon_label.setFixedSize(34, 34)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(1)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("cardTitle")
+
+        value_label = QLabel(value)
+        value_label.setObjectName("cardValue")
+
+        text_box.addWidget(title_label)
+        text_box.addWidget(value_label)
+
+        layout.addWidget(icon_label)
+        layout.addLayout(text_box)
+        layout.addStretch()
+
+        return card
+
     def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
         flags = Qt.WindowType.Window
         if always_on_top:
@@ -1046,7 +1143,7 @@ class OverlayWindow(QWidget):
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1120, 520)
+        self.resize(1120, 620)
         self.setWindowOpacity(self.normal_opacity)
 
         self.system_label = QLabel()
@@ -1054,8 +1151,33 @@ class OverlayWindow(QWidget):
         self.location_label = QLabel()
         self.count_label = QLabel()
         self.special_label = QLabel()
+
+        self.log_title_label = QLabel("Journal Log")
+        self.log_title_label.setObjectName("sectionTitle")
+
+        self.legend_title_label = QLabel("Legend")
+        self.legend_title_label.setObjectName("sectionTitle")
+
+        self.ship_card = QFrame()
+        self.mode_card = QFrame()
+        self.location_card = QFrame()
+        self.bodies_card = QFrame()
+        self.other_card = QFrame()
+        self.high_value_card = QFrame()
+        self.bio_card = QFrame()
+
         self.legend_label = QLabel(
-            "Legend  |  Bio: gray = expected, green = found, purple = complete  |  DSS: orange = needed, green = complete"
+            "Bio Progress\n"
+            "  gray  = expected / not found\n"
+            "  green = found / sampling\n"
+            "  purple = complete\n\n"
+            "DSS\n"
+            "  orange = mapping needed\n"
+            "  green  = DSS complete\n\n"
+            "Rows\n"
+            "  red   = high-value unmapped\n"
+            "  blue  = high-value mapped\n"
+            "  green = biological signals"
         )
         self.legend_label.setObjectName("legendLabel")
 
@@ -1080,45 +1202,108 @@ class OverlayWindow(QWidget):
         for col in range(10):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Let Bio Status take extra width when the window is stretched.
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
-
-        # Optional: keep the last column from auto-stretching instead of Bio Status.
+        # Bio Progress gets the extra space.
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        # self.table.setColumnWidth(8, 360)
+        
+        # Recommendation should not steal all the width.
+        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        
         table_header.setStretchLastSection(False)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(34)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(85)
+        self.log_box.setMinimumHeight(70)
+        self.log_box.setMaximumHeight(80)
 
         header = QVBoxLayout()
         header.setSpacing(10)
 
         top_row = QHBoxLayout()
-        top_row.addWidget(self.system_label, stretch=1)
-        top_row.addWidget(self.opacity_button, stretch=0)
+        top_row.setSpacing(10)
+        
+        self.system_card = self.make_info_card("◎", "System", "Unknown")
+        self.target_card = self.make_info_card("➜", "Target", "none")
+        self.final_card = self.make_info_card("◆", "Final", "none")
+        self.event_card = self.make_info_card("✦", "Event", "?")
+        
+        top_row.addWidget(self.system_card, stretch=2)
+        top_row.addWidget(self.target_card, stretch=2)
+        top_row.addWidget(self.final_card, stretch=2)
+        top_row.addWidget(self.event_card, stretch=1)
+        top_row.addWidget(self.opacity_button, stretch=0) 
+
 
         ship_row = QHBoxLayout()
-        ship_row.addWidget(self.ship_label)
-        ship_row.addStretch()
-        ship_row.addWidget(self.location_label)
-
+        ship_row.setSpacing(10)
+        
+        self.ship_card = self.make_info_card("🚀", "Ship", "Unknown ship")
+        self.mode_card = self.make_info_card("🧭", "Mode", "Unknown")
+        self.location_card = self.make_info_card("📍", "Location", "space")
+        
+        ship_row.addWidget(self.ship_card, stretch=2)
+        ship_row.addWidget(self.mode_card, stretch=1)
+        ship_row.addWidget(self.location_card, stretch=2)
+        
         summary_row = QHBoxLayout()
-        summary_row.addWidget(self.count_label)
-        summary_row.addStretch()
+        summary_row.setSpacing(10)
+        
+        self.bodies_card = self.make_info_card("◎", "Bodies", "? / ?")
+        self.other_card = self.make_info_card("✦", "Other", "0")
+        self.high_value_card = self.make_info_card("◇", "High-value", "0")
+        self.bio_card = self.make_info_card("☘", "Bio bodies", "0")
+        
+        summary_row.addWidget(self.bodies_card)
+        summary_row.addWidget(self.other_card)
+        summary_row.addWidget(self.high_value_card)
+        summary_row.addWidget(self.bio_card)
 
         header.addLayout(top_row)
         header.addWidget(self.special_label)
         header.addLayout(ship_row)
         header.addLayout(summary_row)
 
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(10)
+        
+        log_card = QFrame()
+        log_card.setObjectName("bottomCard")
+        log_card.setMaximumHeight(115)
+
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(10, 6, 10, 10)
+        log_layout.setSpacing(2)
+
+        self.log_title_label.setFixedHeight(18)
+
+        log_layout.addWidget(self.log_title_label)
+        log_layout.addWidget(self.log_box)
+        log_layout.addStretch(0)
+        
+        legend_card = QFrame()
+        legend_card.setObjectName("bottomCard")
+        legend_card.setMaximumHeight(115)
+
+        legend_layout = QVBoxLayout(legend_card)
+        legend_layout.setContentsMargins(10, 6, 10, 8)
+        legend_layout.setSpacing(2)
+
+        self.legend_title_label.setFixedHeight(18)
+
+        legend_layout.addWidget(self.legend_title_label)
+        legend_layout.addWidget(self.legend_label)
+        
+        bottom_row.addWidget(log_card, stretch=2)
+        bottom_row.addWidget(legend_card, stretch=1)
+        
         layout = QVBoxLayout()
         layout.addLayout(header)
-        layout.addWidget(self.table)
-        layout.addWidget(self.legend_label)
-        layout.addWidget(self.log_box)
+        layout.addWidget(self.table, stretch=1)
+        layout.addLayout(bottom_row, stretch=0)
         self.setLayout(layout)
 
         self.setStyleSheet("""
@@ -1129,18 +1314,59 @@ class OverlayWindow(QWidget):
             }
 
             QLabel {
+                background-color: transparent;
                 color: #E6EDF3;
                 font-size: 14px;
                 padding: 2px;
             }
 
-            QLabel#legendLabel {
+            QFrame#infoCard {
                 background-color: #16202A;
+                border: 1px solid #2A3A48;
+                border-radius: 12px;
+            }
+
+            QFrame#bottomCard {
+                background-color: #16202A;
+                border: 1px solid #2A3A48;
+                border-radius: 12px;
+            }
+            
+            QLabel#sectionTitle {
+                background-color: transparent;
+                color: #E6EDF3;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 0px;
+                margin: 0px;
+            }
+            
+            QLabel#legendLabel {
+                background-color: transparent;
                 color: #C7D0D9;
                 font-size: 12px;
-                padding: 7px;
-                border: 1px solid #2A3A48;
-                border-radius: 8px;
+                padding: 4px;
+            }
+            
+            QLabel#cardIcon {
+                background-color: transparent;
+                color: #F59E0B;
+                font-size: 20px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            
+            QLabel#cardTitle {
+                background-color: transparent;
+                color: #9FB0BF;
+                font-size: 12px;
+            }
+            
+            QLabel#cardValue {
+                background-color: transparent;
+                color: #E6EDF3;
+                font-size: 15px;
+                font-weight: bold;
             }
 
             QTableWidget {
@@ -1309,12 +1535,16 @@ class OverlayWindow(QWidget):
                 text_color = "#DDDDDD"
 
             label = QLabel(label_text)
+            label.setFixedHeight(24)
+            label.setMinimumWidth(80)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             label.setStyleSheet(f"""
                 QLabel {{
                     background-color: {color};
                     color: {text_color};
                     border-radius: 5px;
-                    padding: 2px 6px;
+                    padding: 1px 2px;
                 }}
             """)
 
@@ -1363,21 +1593,32 @@ class OverlayWindow(QWidget):
         target = state.nav_target or "none"
         final = state.nav_final or "none"
 
-        self.system_label.setText(
-            f"System: {system}    Target: {target}    Final: {final}    Event: {state.last_event or '?'}"
-        )
+        self.update_info_card(self.system_card, "◎", "System", system)
+        self.update_info_card(self.target_card, "➜", "Target", target)
+        self.update_info_card(self.final_card, "◆", "Final", final)
+        self.update_info_card(self.event_card, "✦", "Event", state.last_event or "?")
 
         ship = state.ship_name or friendly_ship_name(state.ship)
         mode = "On Foot" if state.on_foot else "In Ship"
-
-        self.ship_label.setText(f"Ship: {ship}    Mode: {mode}")
+        
+        ship_icon_path = on_foot_icon_path() if state.on_foot else friendly_ship_icon_path(state.ship)
+        
+        self.update_info_card(
+            self.ship_card,
+            "🚀",
+            "Ship",
+            ship,
+            icon_path=ship_icon_path,
+        )
+        
+        self.update_info_card(self.mode_card, "🧭", "Mode", mode)
 
         where = state.station or state.body or "space"
         latlon = ""
         if state.latitude is not None and state.longitude is not None:
             latlon = f"    Lat/Lon: {state.latitude:.4f}, {state.longitude:.4f}"
 
-        self.location_label.setText(f"Location: {where}{latlon}")
+        self.update_info_card(self.location_card, "📍", "Location", f"{where}{latlon}")
 
         planet_star_scanned_count = len([
             b for b in state.bodies.values()
@@ -1405,11 +1646,32 @@ class OverlayWindow(QWidget):
         if other_scanned_count > 0:
             other_text = f"    Other scanned: {other_scanned_count}"
 
-        self.count_label.setText(
-            f"Bodies: {planet_star_scanned_count} scanned / {total} detected"
-            f"{other_text}    "
-            f"High-value unmapped: {len(high_value_unmapped)}    "
-            f"Bio bodies: {len(bio_bodies)}"
+        self.update_info_card(
+            self.bodies_card,
+            "◎",
+            "Bodies",
+            f"{planet_star_scanned_count} / {total}",
+        )
+        
+        self.update_info_card(
+            self.other_card,
+            "✦",
+            "Other scanned",
+            str(other_scanned_count),
+        )
+        
+        self.update_info_card(
+            self.high_value_card,
+            "◇",
+            "High-value",
+            str(len(high_value_unmapped)),
+        )
+        
+        self.update_info_card(
+            self.bio_card,
+            "☘",
+            "Bio bodies",
+            str(len(bio_bodies)),
         )
 
         def body_sort_key(b: BodyInfo):
@@ -1444,6 +1706,19 @@ class OverlayWindow(QWidget):
             state.bodies.values(),
             key=body_sort_key,
         )
+
+        max_bio_pills = 0
+
+        for body in bodies:
+            expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
+        
+            if not expected and body.bio_signals:
+                expected = [f"Bio {i + 1}" for i in range(body.bio_signals)]
+        
+            max_bio_pills = max(max_bio_pills, len(expected))
+        
+        bio_column_width = max(220, min(520, max_bio_pills * 95))
+        self.table.setColumnWidth(8, bio_column_width)
 
         self.table.setRowCount(len(bodies))
 
@@ -1525,7 +1800,9 @@ class OverlayWindow(QWidget):
             else:
                 self.table.removeCellWidget(row, 8)
 
-        self.table.resizeRowsToContents()
+        # Keep rows compact even when Bio progress contains widgets
+        for row in range(self.table.rowCount()):
+            self.table.setRowHeight(row, 32)
         # auto scroll
         self.log_box.setPlainText("\n".join(state.messages))
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
