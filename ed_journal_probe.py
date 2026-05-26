@@ -1201,13 +1201,13 @@ class OverlayWindow(QWidget):
         # Let normal columns size to their contents.
         for col in range(10):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Bio Progress gets the extra space.
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        # self.table.setColumnWidth(8, 360)
         
         # Recommendation should not steal all the width.
-        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
-        self.table.setColumnWidth(9, 260)
-        
-        # Bio Progress gets the extra space.
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         
         table_header.setStretchLastSection(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -1536,7 +1536,7 @@ class OverlayWindow(QWidget):
 
             label = QLabel(label_text)
             label.setFixedHeight(24)
-            label.setMinimumWidth(70)
+            label.setMinimumWidth(80)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             label.setStyleSheet(f"""
@@ -1544,7 +1544,7 @@ class OverlayWindow(QWidget):
                     background-color: {color};
                     color: {text_color};
                     border-radius: 5px;
-                    padding: 1px 6px;
+                    padding: 1px 2px;
                 }}
             """)
 
@@ -1706,6 +1706,19 @@ class OverlayWindow(QWidget):
             state.bodies.values(),
             key=body_sort_key,
         )
+
+        max_bio_pills = 0
+
+        for body in bodies:
+            expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
+        
+            if not expected and body.bio_signals:
+                expected = [f"Bio {i + 1}" for i in range(body.bio_signals)]
+        
+            max_bio_pills = max(max_bio_pills, len(expected))
+        
+        bio_column_width = max(220, min(520, max_bio_pills * 95))
+        self.table.setColumnWidth(8, bio_column_width)
 
         self.table.setRowCount(len(bodies))
 

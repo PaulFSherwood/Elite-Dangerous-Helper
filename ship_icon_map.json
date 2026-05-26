@@ -1,0 +1,158 @@
+{
+  "sidewinder": {
+    "name": "Sidewinder",
+    "icon": "assets/ships/sidewinder.png"
+  },
+  "eagle": {
+    "name": "Eagle",
+    "icon": "assets/ships/eagle.png"
+  },
+  "hauler": {
+    "name": "Hauler",
+    "icon": "assets/ships/hauler.png"
+  },
+  "adder": {
+    "name": "Adder",
+    "icon": "assets/ships/adder.png"
+  },
+  "viper": {
+    "name": "Viper",
+    "icon": "assets/ships/viper.png"
+  },
+  "viper_mkiv": {
+    "name": "Viper Mk IV",
+    "icon": "assets/ships/viper_mkiv.png"
+  },
+  "cobra_mkiii": {
+    "name": "Cobra Mk III",
+    "icon": "assets/ships/cobra_mkiii.png"
+  },
+  "cobra_mkiv": {
+    "name": "Cobra Mk IV",
+    "icon": "assets/ships/cobra_mkiv.png"
+  },
+  "diamondback": {
+    "name": "Diamondback Scout",
+    "icon": "assets/ships/diamondback.png"
+  },
+  "diamondbackxl": {
+    "name": "Diamondback Explorer",
+    "icon": "assets/ships/diamondbackxl.png"
+  },
+  "type6": {
+    "name": "Type-6 Transporter",
+    "icon": "assets/ships/type6.png"
+  },
+  "type7": {
+    "name": "Type-7 Transporter",
+    "icon": "assets/ships/type7.png"
+  },
+  "type8": {
+    "name": "Type-8 Transporter",
+    "icon": "assets/ships/type8.png"
+  },
+  "type9": {
+    "name": "Type-9 Heavy",
+    "icon": "assets/ships/type9.png"
+  },
+  "type10": {
+    "name": "Type-10 Defender",
+    "icon": "assets/ships/type10.png"
+  },
+  "dolphin": {
+    "name": "Dolphin",
+    "icon": "assets/ships/dolphin.png"
+  },
+  "orca": {
+    "name": "Orca",
+    "icon": "assets/ships/orca.png"
+  },
+  "belugaliner": {
+    "name": "Beluga Liner",
+    "icon": "assets/ships/belugaliner.png"
+  },
+  "asp": {
+    "name": "Asp Scout",
+    "icon": "assets/ships/asp.png"
+  },
+  "asp_scout": {
+    "name": "Asp Scout",
+    "icon": "assets/ships/asp_scout.png"
+  },
+  "asp_explorer": {
+    "name": "Asp Explorer",
+    "icon": "assets/ships/asp_explorer.png"
+  },
+  "vulture": {
+    "name": "Vulture",
+    "icon": "assets/ships/vulture.png"
+  },
+  "mamba": {
+    "name": "Mamba",
+    "icon": "assets/ships/mamba.png"
+  },
+  "ferdelance": {
+    "name": "Fer-de-Lance",
+    "icon": "assets/ships/ferdelance.png"
+  },
+  "empire_courier": {
+    "name": "Imperial Courier",
+    "icon": "assets/ships/empire_courier.png"
+  },
+  "cutter": {
+    "name": "Imperial Cutter",
+    "icon": "assets/ships/cutter.png"
+  },
+  "federation_dropship": {
+    "name": "Federal Dropship",
+    "icon": "assets/ships/federation_dropship.png"
+  },
+  "federation_corvette": {
+    "name": "Federal Corvette",
+    "icon": "assets/ships/federation_corvette.png"
+  },
+  "alliance_chieftain": {
+    "name": "Alliance Chieftain",
+    "icon": "assets/ships/alliance_chieftain.png"
+  },
+  "alliance_crusader": {
+    "name": "Alliance Crusader",
+    "icon": "assets/ships/alliance_crusader.png"
+  },
+  "alliance_challenger": {
+    "name": "Alliance Challenger",
+    "icon": "assets/ships/alliance_challenger.png"
+  },
+  "krait_mkii": {
+    "name": "Krait Mk II",
+    "icon": "assets/ships/krait_mkii.png"
+  },
+  "krait_light": {
+    "name": "Krait Phantom",
+    "icon": "assets/ships/krait_light.png"
+  },
+  "python": {
+    "name": "Python",
+    "icon": "assets/ships/python.png"
+  },
+  "python_nx": {
+    "name": "Python Mk II",
+    "icon": "assets/ships/python_nx.png"
+  },
+  "anaconda": {
+    "name": "Anaconda",
+    "icon": "assets/ships/anaconda.png"
+  },
+  "panthermkii": {
+    "name": "Panther Clipper Mk II",
+    "icon": "assets/ships/panthermkii.png"
+  },
+  "_unknown": {
+    "name": "Unknown ship",
+    "icon": "assets/ships/unknown_ship.png"
+  },
+  "_on_foot": {
+    "name": "On Foot",
+    "icon": "assets/ships/on_foot.png"
+  }
+}
