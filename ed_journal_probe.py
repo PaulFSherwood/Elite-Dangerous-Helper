@@ -1095,7 +1095,7 @@ class OverlayWindow(QWidget):
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1120, 520)
+        self.resize(1120, 620)
         self.setWindowOpacity(self.normal_opacity)
 
         self.system_label = QLabel()
@@ -1103,6 +1103,12 @@ class OverlayWindow(QWidget):
         self.location_label = QLabel()
         self.count_label = QLabel()
         self.special_label = QLabel()
+
+        self.log_title_label = QLabel("Journal Log")
+        self.log_title_label.setObjectName("sectionTitle")
+
+        self.legend_title_label = QLabel("Legend")
+        self.legend_title_label.setObjectName("sectionTitle")
 
         self.ship_card = QFrame()
         self.mode_card = QFrame()
@@ -1113,7 +1119,17 @@ class OverlayWindow(QWidget):
         self.bio_card = QFrame()
 
         self.legend_label = QLabel(
-            "Legend  |  Bio: gray = expected, green = found, purple = complete  |  DSS: orange = needed, green = complete"
+            "Bio Progress\n"
+            "  gray  = expected / not found\n"
+            "  green = found / sampling\n"
+            "  purple = complete\n\n"
+            "DSS\n"
+            "  orange = mapping needed\n"
+            "  green  = DSS complete\n\n"
+            "Rows\n"
+            "  red   = high-value unmapped\n"
+            "  blue  = high-value mapped\n"
+            "  green = biological signals"
         )
         self.legend_label.setObjectName("legendLabel")
 
@@ -1149,7 +1165,7 @@ class OverlayWindow(QWidget):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(85)
+        self.log_box.setMaximumHeight(80)
 
         header = QVBoxLayout()
         header.setSpacing(10)
@@ -1187,11 +1203,36 @@ class OverlayWindow(QWidget):
         header.addLayout(ship_row)
         header.addLayout(summary_row)
 
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(10)
+        
+        log_card = QFrame()
+        log_card.setObjectName("bottomCard")
+        log_card.setMaximumHeight(150)
+
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(10, 8, 10, 10)
+        log_layout.setSpacing(6)
+        log_layout.addWidget(self.log_title_label)
+        log_layout.addWidget(self.log_box)
+        
+        legend_card = QFrame()
+        legend_card.setObjectName("bottomCard")
+        legend_card.setMaximumHeight(150)
+
+        legend_layout = QVBoxLayout(legend_card)
+        legend_layout.setContentsMargins(10, 8, 10, 10)
+        legend_layout.setSpacing(6)
+        legend_layout.addWidget(self.legend_title_label)
+        legend_layout.addWidget(self.legend_label)
+        
+        bottom_row.addWidget(log_card, stretch=2)
+        bottom_row.addWidget(legend_card, stretch=1)
+        
         layout = QVBoxLayout()
         layout.addLayout(header)
-        layout.addWidget(self.table)
-        layout.addWidget(self.legend_label)
-        layout.addWidget(self.log_box)
+        layout.addWidget(self.table, stretch=1)
+        layout.addLayout(bottom_row, stretch=0)
         self.setLayout(layout)
 
         self.setStyleSheet("""
@@ -1220,6 +1261,26 @@ class OverlayWindow(QWidget):
                 background-color: #16202A;
                 border: 1px solid #2A3A48;
                 border-radius: 12px;
+            }
+
+            QFrame#bottomCard {
+                background-color: #16202A;
+                border: 1px solid #2A3A48;
+                border-radius: 12px;
+            }
+            
+            QLabel#sectionTitle {
+                color: #E6EDF3;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 2px;
+            }
+            
+            QLabel#legendLabel {
+                background-color: transparent;
+                color: #C7D0D9;
+                font-size: 12px;
+                padding: 4px;
             }
             
             QLabel#cardIcon {
@@ -1405,12 +1466,16 @@ class OverlayWindow(QWidget):
                 text_color = "#DDDDDD"
 
             label = QLabel(label_text)
+            label.setFixedHeight(24)
+            label.setMinimumWidth(70)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             label.setStyleSheet(f"""
                 QLabel {{
                     background-color: {color};
                     color: {text_color};
                     border-radius: 5px;
-                    padding: 2px 6px;
+                    padding: 1px 6px;
                 }}
             """)
 
@@ -1645,7 +1710,9 @@ class OverlayWindow(QWidget):
             else:
                 self.table.removeCellWidget(row, 8)
 
-        self.table.resizeRowsToContents()
+        # Keep rows compact even when Bio progress contains widgets
+        for row in range(self.table.rowCount()):
+            self.table.setRowHeight(row, 32)
         # auto scroll
         self.log_box.setPlainText("\n".join(state.messages))
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
