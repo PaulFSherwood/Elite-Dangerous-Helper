@@ -1,0 +1,154 @@
+QWidget {
+    background-color: #0F1720;
+    color: #E6EDF3;
+    font-size: 13px;
+}
+
+QLabel {
+    background-color: transparent;
+    color: #E6EDF3;
+    font-size: 14px;
+    padding: 2px;
+}
+
+QFrame#infoCard {
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+}
+
+QFrame#specialCard {
+    background-color: #16202A;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QFrame#wideCard {
+    background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
+}
+
+QLabel#specialText {
+    background-color: transparent;
+    color: #E6EDF3;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+QLabel#footerLabel {
+    background-color: transparent;
+    color: #9FB0BF;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+QLabel#legendLabel {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 12px;
+    padding: 4px;
+}
+
+QFrame#bottomCard {
+    background-color: #16202A;
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
+}
+
+QLabel#sectionTitle {
+    background-color: transparent;
+    color: #E6EDF3;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 0px;
+    margin: 0px;
+}
+
+QLabel#legendLabel {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 12px;
+    padding: 4px;
+}
+
+QLabel#cardIcon {
+    background-color: transparent;
+    color: #F59E0B;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 0px;
+}
+
+QLabel#cardTitle {
+    background-color: transparent;
+    color: #9FB0BF;
+    font-size: 12px;
+}
+
+QLabel#cardValue {
+    background-color: transparent;
+    color: #E6EDF3;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+QTableWidget {
+    background-color: #111A22;
+    alternate-background-color: #13202A;
+    color: #E6EDF3;
+    gridline-color: #243342;
+    selection-background-color: #27445C;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QHeaderView::section {
+    background-color: #1E2B36;
+    color: #DCE6EE;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #2A3A48;
+}
+
+QTextEdit {
+    background-color: #0B1117;
+    color: #A7FF83;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+    padding: 6px;
+}
+
+QPushButton#opacityButton {
+    background-color: #1E2B36;
+    color: #F59E0B;
+    border: 1px solid #3A4A58;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 0px;
+}
+
+QPushButton#opacityButton:hover {
+    background-color: #2A3A48;
+}
+
+QLabel#specialIcon {
+    background-color: transparent;
+    color: #F59E0B;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+QFrame#specialCard[alert="true"] {
+    background-color: #4A102A;
+    border: 1px solid #8A3A5A;
+    border-radius: 10px;
+}
+
+QLabel#specialIcon[alert="true"] {
+    background-color: transparent;
+    color: #FFD700;
+    font-size: 20px;
+    font-weight: bold;
+}

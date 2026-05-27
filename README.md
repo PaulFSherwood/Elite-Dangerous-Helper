@@ -1,43 +1,65 @@
 # Elite Journal Helper
 
-A small Linux-native helper for **Elite Dangerous** exploration.
-<img title="" src="ScreenShot.png" alt="image" width="860" height="425">
+A small Linux-native helper for **Elite Dangerous** exploration. 
+<img title="" src="assets\ScreenShot.png" alt="image" width="860" height="425">
 
 The app watches Elite Dangerous journal logs, updates live as the game writes new events, and shows an always-on-top PyQt6 window with system, body, DSS, exobiology, and special-signal information.
 
-## Current Status
+This project was recently refactored from one large `ed_journal_probe.py` file into several smaller Python modules.
 
-This repo is currently centered around one Python file:
+`ed_journal_probe.py` is now the main entry point, while journal handling, state tracking, helper rules, ship icon lookup, and the PyQt6 UI live in separate files.
 
 ```text
-ed_journal_probe.py
+ed_journal_probe.py   main entry point
+journal.py            journal path lookup, journal monitoring, and event handling
+state.py              commander/system/body state models
+rules.py              high-value world, bio, and special-candidate rules
+ships.py              ship friendly names and icon lookup
+ui.py                 PyQt6 dashboard window
+styles/dashboard.qss  external runtime stylesheet
+assets/               app icon and ship images
 ```
 
 ## Features
 
-- Live watches the newest `Journal*.log` file.
+### Live Journal Monitoring
+
+- Live monitors the newest Elite Dangerous `Journal*.log` file.
 - Uses Linux file monitoring through `watchdog` / inotify.
-- Shows an always-on-top PyQt6 window.
-- Displays current system, body/location, ship/suit state, and last journal event.
-- Shows stars, planets, belts, and discovered bodies in a table.
-- Tracks DSS mapping status.
-- Tracks biological signal counts.
-- Tracks exobiology sampling progress.
-- Uses colored Bio Status pills:
-  - Gray = expected organic, not found yet.
-  - Green = found / sampling started.
-  - Purple with check mark = final `Analyse` / 3-of-3 completed.
+- Displays the latest journal event.
+- Tracks current system, body/location, ship/suit state, and travel status.
+
+### Route Awareness
+
+- Supports `NavRoute.json`.
+- Shows system, target, and final destination route cards.
+- Handles route progress while traveling.
+
+### System Body Tracking
+
+- Displays stars, planets, belts, and discovered bodies in a table.
 - Sorts important bodies toward the top.
+- Tracks DSS mapping status.
 - Highlights high-value DSS targets:
   - Earth-like worlds
   - Water worlds
   - Ammonia worlds
   - Terraformable high metal content worlds
   - Terraformable rocky bodies
-- Adds soft candidate notes for:
-  - Guardian candidate bodies
-  - Thargoid-interest ammonia bodies
-- Watches for special signal keywords such as:
+
+### Exobiology Tracking
+
+- Tracks biological signal counts.
+- Tracks exobiology sampling progress.
+- Uses colored Bio Progress pills:
+  - Gray = expected organic, not found yet
+  - Green = found or sampling started
+  - Purple with check mark = final `Analyse` / 3-of-3 completed
+
+### Special Signal Detection
+
+- Shows a special signal alert banner.
+- Watches for notable signal keywords, including:
   - Guardian
   - Thargoid
   - Non-Human
@@ -47,6 +69,19 @@ ed_journal_probe.py
   - Ancient ruins / structures
   - Barnacles
   - Anomalies
+
+### Exploration Notes
+
+- Adds soft candidate notes for:
+  - Guardian candidate bodies
+  - Thargoid-interest ammonia bodies
+
+### Desktop Dashboard UI
+
+- Shows an always-on-top PyQt6 window.
+- Supports ship icons from `assets/ships/`.
+- Supports opacity / solid window toggle.
+- Uses an external runtime stylesheet at `styles/dashboard.qss`.
 
 ## Install on Ubuntu / Kubuntu
 
@@ -94,6 +129,29 @@ For Zsh:
 echo "alias edHelper='python3 ~/Documents/src/elite-journal-helper/ed_journal_probe.py'" >> ~/.zshrc
 source ~/.zshrc
 ```
+
+## File layout
+
+```text
+ed_journal_probe.py   main entry point
+state.py              BodyInfo and CommanderState data models
+journal.py            journal path lookup, JournalMonitor, event handling
+rules.py              high-value/bio/special-candidate helper rules
+ships.py              ship friendly names and icon paths
+ui.py                 PyQt6 OverlayWindow
+styles/dashboard.qss  external UI stylesheet
+assets/               icons and ship images
+```
+
+## Customizing the UI
+
+The main stylesheet is loaded at runtime from:
+
+```text
+styles/dashboard.qss
+```
+
+You can edit that file to change colors, borders, fonts, and card styling without changing Python code.
 
 ## Journal Folder
 
@@ -223,7 +281,7 @@ Sensor
 
 ## Current Limitations
 
-- Currently a single Python file.
+- Module split is early and may still need cleanup.
 - No saved database yet.
 - No web dashboard yet.
 - No iPhone/mobile dashboard yet.
@@ -234,12 +292,8 @@ Sensor
 
 ## Future Ideas
 
-- Split into modules:
-  - journal reader
-  - state model
-  - rules engine
-  - UI
-  - web server
+- Continue improving the module boundaries.
+- Add a web server / browser dashboard.
 - Add local SQLite history.
 - Add a browser/iPhone dashboard.
 - Add desktop notifications or sounds.
@@ -251,3 +305,9 @@ Sensor
 ## Disclaimer
 
 This is an unofficial Elite Dangerous helper tool. It is not affiliated with Frontier Developments.
+
+Notes
+
+- This app reads local journal files only.
+- No Frontier API login is used.
+- Ring/mining search modes are planned for a later version.
