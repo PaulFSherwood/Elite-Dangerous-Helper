@@ -17,12 +17,14 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QFrame,
     QSizePolicy,
+    QComboBox,
 )
 
 from journal import JournalMonitor
 from state import BodyInfo
 from rules import bio_key
 from ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
+from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description
 
 
 def load_stylesheet() -> str:
@@ -99,6 +101,45 @@ class OverlayWindow(QWidget):
             if value_label:
                 value_label.setText(value)
 
+    def update_search_rules_label(self) -> None:
+        search_type = self.search_type_combo.currentText()
+        search_item = self.search_item_combo.currentText()
+    
+        if search_type == "None" or search_item == "None":
+            self.search_rules_label.setText("Search: none")
+            return
+    
+        rule = get_rule_description(search_type, search_item)
+    
+        conditions = rule.get("conditions", [])
+        match = rule.get("match", "")
+    
+        if conditions:
+            condition_text = " | ".join(conditions)
+        else:
+            condition_text = "No rule defined"
+    
+        self.search_rules_label.setText(
+            f"{search_item}: {condition_text}    Match: {match}"
+        )
+
+    def update_search_item_dropdown(self) -> None:
+        search_type = self.search_type_combo.currentText()
+        items = get_items_for_type(search_type)
+
+        self.search_item_combo.blockSignals(True)
+        self.search_item_combo.clear()
+
+        if not items:
+            self.search_item_combo.addItem("None")
+            self.search_item_combo.setEnabled(False)
+        else:
+            self.search_item_combo.addItems(items)
+            self.search_item_combo.setEnabled(True)
+
+        self.search_item_combo.blockSignals(False)
+        self.update_search_rules_label()
+
     def make_info_card(self, icon: str, title: str, value: str) -> QFrame:
         card = QFrame()
         card.setObjectName("infoCard")
@@ -169,16 +210,35 @@ class OverlayWindow(QWidget):
         
         self.special_icon_label = QLabel("✦")
         self.special_icon_label.setObjectName("specialIcon")
-        
+
         self.special_label = QLabel("Special: none detected in this system")
         self.special_label.setObjectName("specialText")
-        
+
+        self.search_type_combo = QComboBox()
+        self.search_type_combo.addItems(SEARCH_TYPES.keys())
+        self.search_type_combo.setObjectName("searchCombo")
+
+        self.search_item_combo = QComboBox()
+        self.search_item_combo.setObjectName("searchCombo")
+
+        self.search_type_combo.currentTextChanged.connect(self.update_search_item_dropdown)
+        self.search_item_combo.currentTextChanged.connect(self.update_search_rules_label)
+
         special_layout = QHBoxLayout(self.special_card)
         special_layout.setContentsMargins(14, 8, 14, 8)
         special_layout.setSpacing(10)
+
+        self.search_rules_label = QLabel("No search target selected")
+        self.search_rules_label.setObjectName("searchRulesLabel")
+
         special_layout.addWidget(self.special_icon_label)
-        special_layout.addWidget(self.special_label)
-        special_layout.addStretch()
+        special_layout.addWidget(self.special_label, stretch=1)
+        special_layout.addWidget(self.search_type_combo)
+        special_layout.addWidget(self.search_item_combo)
+        special_layout.addWidget(self.search_rules_label, stretch=1)
+
+        self.update_search_item_dropdown()
+        self.update_search_rules_label()
 
         self.log_title_label = QLabel("Journal Log")
         self.log_title_label.setObjectName("sectionTitle")
@@ -244,13 +304,16 @@ class OverlayWindow(QWidget):
         for col in range(10):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
+        # Body gets the extra width
+        table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
         # Recommendation stays fixed so it cannot steal width.
         table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(9, 80)
 
         # Bio Progress gets the extra width.
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(8, 100)
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(8, 320)
 
         table_header.setStretchLastSection(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -784,8 +847,8 @@ class OverlayWindow(QWidget):
         footer_ship = state.ship_name or friendly_ship_name(state.ship)
 
         self.footer_label.setText(
-                f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
-                )
+            f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper        v1.1.0-dev"
+        )
 
         # Keep rows compact even when Bio progress contains widgets
         for row in range(self.table.rowCount()):

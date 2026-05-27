@@ -1,3 +1,20 @@
+QComboBox#searchCombo {
+    background-color: #0B1117;
+    color: #E6EDF3;
+    border: 1px solid #2A3A48;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 150px;
+}
+
+QComboBox#searchCombo:hover {
+    border: 1px solid #3A4A58;
+}
+
+QComboBox#searchCombo:disabled {
+    color: #6B7280;
+}
+
 QWidget {
     background-color: #0F1720;
     color: #E6EDF3;
@@ -11,29 +28,18 @@ QLabel {
     padding: 2px;
 }
 
-QFrame#infoCard {
-    background-color: transparent;
-    border: none;
-    border-radius: 8px;
-}
-
-QFrame#specialCard {
-    background-color: #16202A;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QFrame#wideCard {
-    background-color: #121C26;
-    border: 1px solid #2A3A48;
-    border-radius: 12px;
-}
-
 QLabel#specialText {
     background-color: transparent;
     color: #E6EDF3;
     font-size: 15px;
     font-weight: bold;
+}
+
+QLabel#searchRulesLabel {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 12px;
+    padding: 2px 6px;
 }
 
 QLabel#footerLabel {
@@ -48,12 +54,6 @@ QLabel#legendLabel {
     color: #C7D0D9;
     font-size: 12px;
     padding: 4px;
-}
-
-QFrame#bottomCard {
-    background-color: #16202A;
-    border: 1px solid #2A3A48;
-    border-radius: 12px;
 }
 
 QLabel#sectionTitle {
@@ -90,6 +90,20 @@ QLabel#cardValue {
     background-color: transparent;
     color: #E6EDF3;
     font-size: 15px;
+    font-weight: bold;
+}
+
+QLabel#specialIcon {
+    background-color: transparent;
+    color: #F59E0B;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+QLabel#specialIcon[alert="true"] {
+    background-color: transparent;
+    color: #FFD700;
+    font-size: 20px;
     font-weight: bold;
 }
 
@@ -133,11 +147,28 @@ QPushButton#opacityButton:hover {
     background-color: #2A3A48;
 }
 
-QLabel#specialIcon {
+QFrame#infoCard {
     background-color: transparent;
-    color: #F59E0B;
-    font-size: 20px;
-    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+}
+
+QFrame#specialCard {
+    background-color: #16202A;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QFrame#wideCard {
+    background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
+}
+
+QFrame#bottomCard {
+    background-color: #16202A;
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
 }
 
 QFrame#specialCard[alert="true"] {
@@ -146,9 +177,3 @@ QFrame#specialCard[alert="true"] {
     border-radius: 10px;
 }
 
-QLabel#specialIcon[alert="true"] {
-    background-color: transparent;
-    color: #FFD700;
-    font-size: 20px;
-    font-weight: bold;
-}
