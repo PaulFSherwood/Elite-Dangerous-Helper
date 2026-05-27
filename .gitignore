@@ -1,2 +1,4 @@
 PreviousVersion*/
 PreviousVersion*
+__pycache__/
+*.pyc
