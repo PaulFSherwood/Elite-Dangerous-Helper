@@ -14,6 +14,7 @@ ed_journal_probe.py   main entry point
 journal.py            journal path lookup, journal monitoring, and event handling
 state.py              commander/system/body state models
 rules.py              high-value world, bio, and special-candidate rules
+search_targets.py     mining/search target definitions and match rules
 ships.py              ship friendly names and icon lookup
 ui.py                 PyQt6 dashboard window
 styles/dashboard.qss  external runtime stylesheet
@@ -34,6 +35,26 @@ assets/               app icon and ship images
 - Supports `NavRoute.json`.
 - Shows system, target, and final destination route cards.
 - Handles route progress while traveling.
+
+### Mining Search Mode
+
+- Adds a Search Type / Search Item selector in the top dashboard.
+- Current search types:
+  - None
+  - Mining
+  - Engineering placeholder
+- Mining search can guide the commander toward useful ring targets.
+- Tritium search currently checks for:
+  - Gas giant
+  - Icy ring
+  - Confirmed Tritium hotspot signals from `SAASignalsFound`
+- Search condition dots:
+  - Red dot = condition not found yet
+  - Green dot = condition found in the current system/body data
+  - Green title = selected target confirmed, such as a Tritium hotspot
+- Adds a `Special / Comments` table column for search results such as:
+  - Possible Tritium prospect: scan icy ring
+  - Confirmed Tritium hotspot x4
 
 ### System Body Tracking
 
@@ -137,6 +158,7 @@ ed_journal_probe.py   main entry point
 state.py              BodyInfo and CommanderState data models
 journal.py            journal path lookup, JournalMonitor, event handling
 rules.py              high-value/bio/special-candidate helper rules
+search_targets.py     mining/search target definitions and match rules
 ships.py              ship friendly names and icon paths
 ui.py                 PyQt6 OverlayWindow
 styles/dashboard.qss  external UI stylesheet
@@ -218,6 +240,30 @@ Guardian candidate
 Thargoid-interest ammonia body
 ```
 
+### Search / Mining Rules
+
+The search controls are meant to pull the commander toward a selected goal.
+
+Example:
+
+```text
+Search Type: Mining
+Search Item: Tritium
+
+For Tritium, the app watches for:
+
+Gas giant
+Icy ring
+Confirmed Tritium hotspot
+
+The rule display uses simple status colors:
+
+Red dot      = condition not found yet
+Green dot    = condition found
+Green title  = selected item confirmed
+A gas giant with an icy ring is treated as a possible Tritium prospect. A SAASignalsFound journal event containing Type: Tritium is treated as confirmed.
+```
+
 ## Special Alerts
 
 Special alerts are keyword-based. They are attention flags, not proof that something rare exists.
@@ -289,6 +335,8 @@ Sensor
 - Bio prediction is basic.
 - Special alerts may need tuning.
 - Old journal data may not always reconstruct all exobiology state perfectly, because some live state depends on the order and presence of journal events.
+- Mining search currently focuses on ring/body journal data and Tritium-style hotspot detection.
+- Engineering search is only a placeholder for now.
 
 ## Future Ideas
 
@@ -301,6 +349,10 @@ Sensor
 - Add better biological prediction.
 - Add exportable exploration session reports.
 - Add settings for colors, alerts, and keyword lists.
+- Add more mining item rules.
+- Add better ring/hotspot display.
+- Add engineering material search.
+- Add saved user search preferences.
 
 ## Disclaimer
 

@@ -110,7 +110,13 @@ def upsert_body(state: CommanderState, body: BodyInfo) -> None:
             if field_name == "mapped" and existing.mapped is True and value is False:
                 continue
 
-            if field_name in ("bio_species", "bio_expected_genuses", "bio_completed_species") and value == []:
+            if field_name in (
+                "bio_species",
+                "bio_expected_genuses",
+                "bio_completed_species",
+                "rings",
+                "mining_signals",
+            ) and value == []:
                 continue
 
             setattr(existing, field_name, value)

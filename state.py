@@ -29,6 +29,9 @@ class BodyInfo:
     radius_m: Optional[float] = None
     surface_temp_k: Optional[float] = None
 
+    rings: list[dict] = field(default_factory=list)
+    mining_signals: list[dict] = field(default_factory=list)
+    search_match: str = ""
 
 @dataclass
 class CommanderState:

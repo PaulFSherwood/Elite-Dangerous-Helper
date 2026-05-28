@@ -24,8 +24,25 @@ from journal import JournalMonitor
 from state import BodyInfo
 from rules import bio_key
 from ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
-from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description
+from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description, evaluate_search_target
 
+WINDOW_WIDTH = 1270
+WINDOW_HEIGHT = 715
+
+WINDOW_MIN_WIDTH = 900
+WINDOW_MIN_HEIGHT = 500
+
+SPECIAL_HEIGHT = 82
+ROUTE_HEIGHT = 70
+STATUS_HEIGHT = 70
+
+TABLE_MIN_HEIGHT = 260
+
+BOTTOM_HEIGHT = 135
+FOOTER_HEIGHT = 28
+
+HEADER_SPACING = 5
+ROW_SPACING = 10
 
 def load_stylesheet() -> str:
     style_path = Path(__file__).resolve().parent / "styles" / "dashboard.qss"
@@ -101,26 +118,44 @@ class OverlayWindow(QWidget):
             if value_label:
                 value_label.setText(value)
 
+    def search_selection_changed(self) -> None:
+        state = self.monitor.state
+        bodies = list(state.bodies.values())
+
+        if bodies:
+            self.update_search_rules_from_bodies(bodies)
+        else:
+            self.update_search_rules_label()
+
     def update_search_rules_label(self) -> None:
         search_type = self.search_type_combo.currentText()
         search_item = self.search_item_combo.currentText()
-    
+
         if search_type == "None" or search_item == "None":
-            self.search_rules_label.setText("Search: none")
+            self.search_rules_label.setText(
+                "<b style='color:#60A5FA;'>Search rules</b><br>"
+                "No search target selected."
+            )
             return
-    
+
         rule = get_rule_description(search_type, search_item)
-    
         conditions = rule.get("conditions", [])
         match = rule.get("match", "")
-    
-        if conditions:
-            condition_text = " | ".join(conditions)
-        else:
+
+        # This top card shows the rule definition, not a current-system result.
+        # Later refresh() will update this again with detected red/green status.
+        condition_text = " &nbsp;&nbsp;&nbsp;&nbsp; ".join(
+            f"<span style='color:#EF4444;'>●</span> {condition}"
+            for condition in conditions
+        )
+
+        if not condition_text:
             condition_text = "No rule defined"
-    
+
         self.search_rules_label.setText(
-            f"{search_item}: {condition_text}    Match: {match}"
+            f"<b style='color:#60A5FA;'>{search_item} conditions:</b><br>"
+            f"{condition_text}<br>"
+            f"<b>Match when:</b> {match}"
         )
 
     def update_search_item_dropdown(self) -> None:
@@ -138,7 +173,8 @@ class OverlayWindow(QWidget):
             self.search_item_combo.setEnabled(True)
 
         self.search_item_combo.blockSignals(False)
-        self.update_search_rules_label()
+        # self.update_search_rules_label()
+        self.search_selection_changed()
 
     def make_info_card(self, icon: str, title: str, value: str) -> QFrame:
         card = QFrame()
@@ -181,6 +217,18 @@ class OverlayWindow(QWidget):
         return card
 
     def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
+        # ------------------------------------------------------------------
+        # 1. Window setup
+        #
+        # This is only the outer window shell:
+        #   - window flags
+        #   - starting size
+        #   - opacity defaults
+        #   - window title/icon
+        #
+        # Nothing layout-related should be placed before widgets exist.
+        # ------------------------------------------------------------------
+
         flags = Qt.WindowType.Window
         if always_on_top:
             flags |= Qt.WindowType.WindowStaysOnTopHint
@@ -188,26 +236,33 @@ class OverlayWindow(QWidget):
         super().__init__(flags=flags)
         self.monitor = monitor
 
-        self.resize(1280, 760)
-        self.setMinimumSize(900, 500)
+        self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
 
         self.opacity_enabled = True
         self.normal_opacity = 0.78
         self.solid_opacity = 1.0
 
         self.setWindowTitle("Paul Observatory")
+
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
+
         self.setWindowOpacity(self.normal_opacity)
 
-        self.system_label = QLabel()
-        self.ship_label = QLabel()
-        self.location_label = QLabel()
-        self.count_label = QLabel()
+        # ------------------------------------------------------------------
+        # 2. Special/search row widgets
+        #
+        # Visual order:
+        #   [special icon] [special alert text] [search type] [search item] [rules text]
+        #
+        # This is the top-most content row in the mockup.
+        # ------------------------------------------------------------------
+
         self.special_card = QFrame()
         self.special_card.setObjectName("specialCard")
-        
+
         self.special_icon_label = QLabel("✦")
         self.special_icon_label.setObjectName("specialIcon")
 
@@ -221,41 +276,258 @@ class OverlayWindow(QWidget):
         self.search_item_combo = QComboBox()
         self.search_item_combo.setObjectName("searchCombo")
 
-        self.search_type_combo.currentTextChanged.connect(self.update_search_item_dropdown)
-        self.search_item_combo.currentTextChanged.connect(self.update_search_rules_label)
+        self.search_rules_label = QLabel("Search: none")
+        self.search_rules_label.setObjectName("searchRulesLabel")
+
+        self.search_rules_label.setTextFormat(Qt.TextFormat.RichText)
+        self.search_rules_label.setWordWrap(True)
 
         special_layout = QHBoxLayout(self.special_card)
         special_layout.setContentsMargins(14, 8, 14, 8)
         special_layout.setSpacing(10)
 
-        self.search_rules_label = QLabel("No search target selected")
-        self.search_rules_label.setObjectName("searchRulesLabel")
+        # Left side: special alert message.
+        special_message_card = QFrame()
+        special_message_card.setObjectName("specialMessageCard")
 
-        special_layout.addWidget(self.special_icon_label)
-        special_layout.addWidget(self.special_label, stretch=1)
-        special_layout.addWidget(self.search_type_combo)
-        special_layout.addWidget(self.search_item_combo)
-        special_layout.addWidget(self.search_rules_label, stretch=1)
+        special_message_layout = QHBoxLayout(special_message_card)
+        special_message_layout.setContentsMargins(10, 4, 10, 4)
+        special_message_layout.setSpacing(8)
+        special_message_layout.addWidget(self.special_icon_label)
+        special_message_layout.addWidget(self.special_label)
 
+        # Middle: dropdown card.
+        search_select_card = QFrame()
+        search_select_card.setObjectName("searchSelectCard")
+
+        search_select_layout = QHBoxLayout(search_select_card)
+        search_select_layout.setContentsMargins(12, 6, 12, 6)
+        search_select_layout.setSpacing(8)
+
+        search_select_title = QLabel("Looking for:")
+        search_select_title.setObjectName("searchCardTitle")
+
+        search_select_layout.addWidget(search_select_title)
+        search_select_layout.addWidget(self.search_type_combo)
+        search_select_layout.addWidget(self.search_item_combo)
+
+        # Right side: rules card.
+        self.search_rules_card = QFrame()
+        self.search_rules_card.setObjectName("searchRulesCard")
+
+        search_rules_layout = QVBoxLayout(self.search_rules_card)
+        search_rules_layout.setContentsMargins(12, 6, 12, 6)
+        search_rules_layout.setSpacing(2)
+        search_rules_layout.addWidget(self.search_rules_label)
+
+        # Full special/search row.
+        special_layout.addWidget(special_message_card, stretch=1)
+        special_layout.addWidget(search_select_card, stretch=0)
+        special_layout.addWidget(self.search_rules_card, stretch=1)
+
+        # Connect the dropdowns after they exist.
+        self.search_type_combo.currentTextChanged.connect(self.update_search_item_dropdown)
+        self.search_item_combo.currentTextChanged.connect(self.search_selection_changed)
+
+        # Populate the second dropdown based on the first dropdown,
+        # then evaluate the selected search target against already-loaded journal history.
         self.update_search_item_dropdown()
-        self.update_search_rules_label()
+
+        # ------------------------------------------------------------------
+        # 3. Route/system row widgets
+        #
+        # Visual order:
+        #   System | Target | Final | Event | opacity toggle
+        #
+        # route_card holds the four info cards.
+        # top_row holds route_card plus the opacity toggle button.
+        # ------------------------------------------------------------------
+
+        self.opacity_button = QPushButton("●\n│\n○")
+        self.opacity_button.setToolTip("Toggle transparency / solid")
+        self.opacity_button.setFixedSize(28, 58)
+        self.opacity_button.clicked.connect(self.toggle_opacity)
+        self.opacity_button.setObjectName("opacityButton")
+
+        route_card = QFrame()
+        route_card.setObjectName("wideCard")
+
+        route_layout = QHBoxLayout(route_card)
+        route_layout.setContentsMargins(12, 8, 12, 8)
+        route_layout.setSpacing(10)
+
+        self.system_card = self.make_info_card("◎", "System", "Unknown")
+        self.target_card = self.make_info_card("➜", "Target", "none")
+        self.final_card = self.make_info_card("◆", "Final", "none")
+        self.event_card = self.make_info_card("✦", "Event", "?")
+
+        route_layout.addWidget(self.system_card, stretch=2)
+        route_layout.addWidget(self.target_card, stretch=2)
+        route_layout.addWidget(self.final_card, stretch=2)
+        route_layout.addWidget(self.event_card, stretch=1)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(ROW_SPACING)
+        top_row.addWidget(route_card, stretch=1)
+        top_row.addWidget(self.opacity_button, stretch=0)
+
+        # ------------------------------------------------------------------
+        # 4. Ship/status row widgets
+        #
+        # Visual order:
+        #   Left card:  Ship | Mode | Location
+        #   Right card: Bodies | Other scanned | High-value | Bio bodies
+        #
+        # middle_row holds both wide cards side-by-side.
+        # ------------------------------------------------------------------
+
+        ship_status_card = QFrame()
+        ship_status_card.setObjectName("wideCard")
+
+        ship_row = QHBoxLayout(ship_status_card)
+        ship_row.setContentsMargins(12, 8, 12, 8)
+        ship_row.setSpacing(10)
+
+        self.ship_card = self.make_info_card("🚀", "Ship", "Unknown ship")
+        self.mode_card = self.make_info_card("🧭", "Mode", "Unknown")
+        self.location_card = self.make_info_card("📍", "Location", "space")
+
+        ship_row.addWidget(self.ship_card, stretch=2)
+        ship_row.addWidget(self.mode_card, stretch=1)
+        ship_row.addWidget(self.location_card, stretch=2)
+
+        summary_status_card = QFrame()
+        summary_status_card.setObjectName("wideCard")
+
+        summary_row = QHBoxLayout(summary_status_card)
+        summary_row.setContentsMargins(12, 8, 12, 8)
+        summary_row.setSpacing(10)
+
+        self.bodies_card = self.make_info_card("◎", "Bodies", "? / ?")
+        self.other_card = self.make_info_card("✦", "Other scanned", "0")
+        self.high_value_card = self.make_info_card("◇", "High-value", "0")
+        self.bio_card = self.make_info_card("☘", "Bio bodies", "0")
+
+        summary_row.addWidget(self.bodies_card)
+        summary_row.addWidget(self.other_card)
+        summary_row.addWidget(self.high_value_card)
+        summary_row.addWidget(self.bio_card)
+
+        middle_row = QHBoxLayout()
+        middle_row.setSpacing(ROW_SPACING)
+        middle_row.addWidget(ship_status_card, stretch=1)
+        middle_row.addWidget(summary_status_card, stretch=1)
+
+        # ------------------------------------------------------------------
+        # 5. Spreadsheet/table section
+        #
+        # This is the large central data area.
+        #
+        # Column index reference:
+        #   0 ID
+        #   1 Body
+        #   2 Type
+        #   3 Class
+        #   4 Distance
+        #   5 Bio
+        #   6 Geo
+        #   7 DSS
+        #   8 Bio Progress
+        #   9 Recommendation
+        # ------------------------------------------------------------------
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(11)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(True)
+
+        self.table.setHorizontalHeaderLabels(
+            [
+                "ID",
+                "Body",
+                "Type",
+                "Class",
+                "Distance",
+                "Bio",
+                "Geo",
+                "DSS",
+                "Bio Progress",
+                "Recommendation",
+                "Special / Comments",
+            ]
+        )
+
+        table_header = self.table.horizontalHeader()
+
+        # Start with manual/interactive sizing for every column.
+        # This makes setColumnWidth() actually matter.
+        for col in range(11):
+            table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+
+        # ID is smaller than the other compact status columns.
+        self.table.setColumnWidth(0, 32)
+
+        # Small status columns.
+        for col in (5, 6, 7):
+            self.table.setColumnWidth(col, 65)
+
+        # Main body description columns.
+        self.table.setColumnWidth(1, 115)   # Body
+        self.table.setColumnWidth(2, 80)    # Type
+        self.table.setColumnWidth(3, 95)    # Class
+        self.table.setColumnWidth(4, 85)    # Distance
+
+        # Larger action/result columns.
+        self.table.setColumnWidth(8, 255)   # Bio Progress
+        self.table.setColumnWidth(9, 115)   # Recommendation
+        self.table.setColumnWidth(10, 205)  # Special / Comments
+
+        # When the window expands, these columns get the extra space.
+        # Keep this simple for now: Body + the last three useful text columns.
+        table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(10, QHeaderView.ResizeMode.Stretch)
+
+        table_header.setStretchLastSection(False)
+        # self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(34)
+
+        # ------------------------------------------------------------------
+        # 6. Bottom row widgets
+        #
+        # Visual order:
+        #   Journal Log | Legend
+        #
+        # This row stays compact and fixed-height.
+        # ------------------------------------------------------------------
 
         self.log_title_label = QLabel("Journal Log")
         self.log_title_label.setObjectName("sectionTitle")
+        self.log_title_label.setFixedHeight(18)
+
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        self.log_box.setMinimumHeight(70)
+        self.log_box.setMaximumHeight(80)
+
+        log_card = QFrame()
+        log_card.setObjectName("bottomCard")
+
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(10, 6, 10, 10)
+        log_layout.setSpacing(2)
+        log_layout.addWidget(self.log_title_label)
+        log_layout.addWidget(self.log_box)
+        log_layout.addStretch(0)
 
         self.legend_title_label = QLabel("Legend")
         self.legend_title_label.setObjectName("sectionTitle")
-
-        self.footer_label = QLabel()
-        self.footer_label.setObjectName("footerLabel")
-
-        self.ship_card = QFrame()
-        self.mode_card = QFrame()
-        self.location_card = QFrame()
-        self.bodies_card = QFrame()
-        self.other_card = QFrame()
-        self.high_value_card = QFrame()
-        self.bio_card = QFrame()
+        self.legend_title_label.setFixedHeight(18)
 
         self.legend_label = QLabel("""
         <table cellspacing="6" cellpadding="2">
@@ -282,162 +554,94 @@ class OverlayWindow(QWidget):
         self.legend_label.setTextFormat(Qt.TextFormat.RichText)
         self.legend_label.setObjectName("legendLabel")
 
-        self.legend_label.setObjectName("legendLabel")
-
-        self.opacity_button = QPushButton("●\n│\n○")
-        self.opacity_button.setToolTip("Toggle transparency / solid")
-        self.opacity_button.setFixedSize(28, 58)
-        self.opacity_button.clicked.connect(self.toggle_opacity)
-        self.opacity_button.setObjectName("opacityButton")
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(10)
-        self.table.setAlternatingRowColors(True)
-        self.table.setShowGrid(True)
-
-        self.table.setHorizontalHeaderLabels(
-            ["ID", "Body", "Type", "Class", "Distance", "Bio", "Geo", "DSS", "Bio Progress", "Recommendation"]
-        )
-
-        table_header = self.table.horizontalHeader()
-
-        for col in range(10):
-            table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
-
-        # Body gets the extra width
-        table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-
-        # Recommendation stays fixed so it cannot steal width.
-        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(9, 80)
-
-        # Bio Progress gets the extra width.
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        self.table.setColumnWidth(8, 320)
-
-        table_header.setStretchLastSection(False)
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(34)
-
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(70)
-        self.log_box.setMaximumHeight(80)
-
-        header = QVBoxLayout()
-        header.setSpacing(10)
-
-        # Top route card: System / Target / Final / Event
-        route_card = QFrame()
-        route_card.setObjectName("wideCard")
-
-        route_layout = QHBoxLayout(route_card)
-        route_layout.setContentsMargins(12, 8, 12, 8)
-        route_layout.setSpacing(10)
-
-        self.system_card = self.make_info_card("◎", "System", "Unknown")
-        self.target_card = self.make_info_card("➜", "Target", "none")
-        self.final_card = self.make_info_card("◆", "Final", "none")
-        self.event_card = self.make_info_card("✦", "Event", "?")
-
-        route_layout.addWidget(self.system_card, stretch=2)
-        route_layout.addWidget(self.target_card, stretch=2)
-        route_layout.addWidget(self.final_card, stretch=2)
-        route_layout.addWidget(self.event_card, stretch=1)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(10)
-        top_row.addWidget(route_card, stretch=1)
-        top_row.addWidget(self.opacity_button, stretch=0)
-
-        # Middle left card: Ship / Mode / Location
-        ship_status_card = QFrame()
-        ship_status_card.setObjectName("wideCard")
-
-        ship_row = QHBoxLayout(ship_status_card)
-        ship_row.setContentsMargins(12, 8, 12, 8)
-        ship_row.setSpacing(10)
-
-        self.ship_card = self.make_info_card("🚀", "Ship", "Unknown ship")
-        self.mode_card = self.make_info_card("🧭", "Mode", "Unknown")
-        self.location_card = self.make_info_card("📍", "Location", "space")
-
-        ship_row.addWidget(self.ship_card, stretch=2)
-        ship_row.addWidget(self.mode_card, stretch=1)
-        ship_row.addWidget(self.location_card, stretch=2)
-
-        # Middle right card: Bodies / Other / High-value / Bio
-        summary_status_card = QFrame()
-        summary_status_card.setObjectName("wideCard")
-
-        summary_row = QHBoxLayout(summary_status_card)
-        summary_row.setContentsMargins(12, 8, 12, 8)
-        summary_row.setSpacing(10)
-
-        self.bodies_card = self.make_info_card("◎", "Bodies", "? / ?")
-        self.other_card = self.make_info_card("✦", "Other", "0")
-        self.high_value_card = self.make_info_card("◇", "High-value", "0")
-        self.bio_card = self.make_info_card("☘", "Bio bodies", "0")
-
-        summary_row.addWidget(self.bodies_card)
-        summary_row.addWidget(self.other_card)
-        summary_row.addWidget(self.high_value_card)
-        summary_row.addWidget(self.bio_card)
-
-        middle_row = QHBoxLayout()
-        middle_row.setSpacing(10)
-        middle_row.addWidget(ship_status_card, stretch=1)
-        middle_row.addWidget(summary_status_card, stretch=1)
-
-        # Final header order
-        header.addWidget(self.special_card)
-        header.addLayout(top_row)
-        header.addLayout(middle_row)
-
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(10)
-        
-        log_card = QFrame()
-        log_card.setObjectName("bottomCard")
-        log_card.setMaximumHeight(115)
-
-        log_layout = QVBoxLayout(log_card)
-        log_layout.setContentsMargins(10, 6, 10, 10)
-        log_layout.setSpacing(2)
-
-        self.log_title_label.setFixedHeight(18)
-
-        log_layout.addWidget(self.log_title_label)
-        log_layout.addWidget(self.log_box)
-        log_layout.addStretch(0)
-        
         legend_card = QFrame()
         legend_card.setObjectName("bottomCard")
-        legend_card.setMaximumHeight(115)
 
         legend_layout = QVBoxLayout(legend_card)
         legend_layout.setContentsMargins(10, 6, 10, 8)
         legend_layout.setSpacing(2)
-
-        self.legend_title_label.setFixedHeight(18)
-
         legend_layout.addWidget(self.legend_title_label)
         legend_layout.addWidget(self.legend_label)
-        
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(ROW_SPACING)
         bottom_row.addWidget(log_card, stretch=2)
         bottom_row.addWidget(legend_card, stretch=1)
-        
+
+        # ------------------------------------------------------------------
+        # 7. Footer
+        #
+        # The footer is updated in refresh().
+        # ------------------------------------------------------------------
+
+        self.footer_left_label = QLabel()
+        self.footer_left_label.setObjectName("footerLabel")
+
+        self.footer_version_label = QLabel("v1.1.0-dev")
+        self.footer_version_label.setObjectName("footerLabel")
+
+        # ------------------------------------------------------------------
+        # 8. Apply fixed section heights
+        #
+        # These lines must appear after the widgets exist.
+        # ------------------------------------------------------------------
+
+        self.special_card.setFixedHeight(SPECIAL_HEIGHT)
+        route_card.setFixedHeight(ROUTE_HEIGHT)
+        ship_status_card.setFixedHeight(STATUS_HEIGHT)
+        summary_status_card.setFixedHeight(STATUS_HEIGHT)
+
+        self.table.setMinimumHeight(TABLE_MIN_HEIGHT)
+
+        log_card.setFixedHeight(BOTTOM_HEIGHT)
+        legend_card.setFixedHeight(BOTTOM_HEIGHT)
+
+        self.footer_left_label.setFixedHeight(FOOTER_HEIGHT)
+
+        # ------------------------------------------------------------------
+        # 9. Main top-to-bottom layout
+        #
+        # Visual order:
+        #   1. Special/search row
+        #   2. Route row
+        #   3. Ship/status row
+        #   4. Table
+        #   5. Journal/legend row
+        #   6. Footer
+        # ------------------------------------------------------------------
+
+        header = QVBoxLayout()
+        header.setSpacing(HEADER_SPACING)
+        header.addWidget(self.special_card)
+        header.addLayout(top_row)
+        header.addLayout(middle_row)
+
         layout = QVBoxLayout()
+        layout.setSpacing(HEADER_SPACING)
+
         layout.addLayout(header)
         layout.addWidget(self.table, stretch=1)
         layout.addLayout(bottom_row, stretch=0)
-        layout.addWidget(self.footer_label)
+
+        footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(0, 0, 0, 0)
+        footer_row.setSpacing(0)
+        footer_row.addWidget(self.footer_left_label)
+        footer_row.addStretch()
+        footer_row.addWidget(self.footer_version_label)
+
+        layout.addLayout(footer_row)
+
         self.setLayout(layout)
 
-        self.setStyleSheet(load_stylesheet())
+        # ------------------------------------------------------------------
+        # 10. Stylesheet and live updates
+        #
+        # Styling is loaded from styles/dashboard.qss so users can customize
+        # colors without editing Python code.
+        # ------------------------------------------------------------------
 
+        self.setStyleSheet(load_stylesheet())
 
         self.monitor.updated.connect(self.refresh)
         self.refresh()
@@ -607,6 +811,67 @@ class OverlayWindow(QWidget):
             self.setWindowOpacity(self.solid_opacity)
             self.opacity_button.setText("○\n│\n●")
 
+    def update_search_rules_from_bodies(self, bodies: list[BodyInfo]) -> None:
+        search_type = self.search_type_combo.currentText()
+        search_item = self.search_item_combo.currentText()
+
+        if search_type == "None" or search_item == "None":
+            self.update_search_rules_label()
+            return
+
+        best_conditions = []
+        confirmed = False
+        best_match_text = ""
+
+        for body in bodies:
+            result = evaluate_search_target(search_type, search_item, body)
+
+            if result.get("conditions"):
+                if not best_conditions:
+                    best_conditions = result["conditions"]
+                else:
+                    # Merge condition results across all scanned bodies.
+                    merged = []
+
+                    for index, (name, found) in enumerate(best_conditions):
+                        new_found = found
+
+                        if index < len(result["conditions"]):
+                            _, other_found = result["conditions"][index]
+                            new_found = found or other_found
+
+                        merged.append((name, new_found))
+
+                    best_conditions = merged
+
+            if result.get("match_text"):
+                best_match_text = result["match_text"]
+
+            if result.get("title_confirmed"):
+                confirmed = True
+                break
+
+        if not best_conditions:
+            self.update_search_rules_label()
+            return
+
+        title_color = "#22C55E" if confirmed else "#60A5FA"
+
+        condition_text = " &nbsp;&nbsp;&nbsp;&nbsp; ".join(
+            f"<span style='color:{'#22C55E' if found else '#EF4444'};'>●</span> {name}"
+            for name, found in best_conditions
+        )
+
+        if not best_match_text:
+            rule = get_rule_description(search_type, search_item)
+            best_match_text = rule.get("match", "")
+
+        self.search_rules_label.setText(
+            f"<b style='color:{title_color};'>{search_item} conditions:</b><br>"
+            f"{condition_text}<br>"
+            f"<b>Match when:</b> {best_match_text}"
+        )
+
     def refresh(self) -> None:
         state = self.monitor.state
 
@@ -737,6 +1002,8 @@ class OverlayWindow(QWidget):
                 key=body_sort_key,
                 )
 
+        self.update_search_rules_from_bodies(bodies)
+
         self.table.setRowCount(len(bodies))
 
         for row, body in enumerate(bodies):
@@ -744,6 +1011,11 @@ class OverlayWindow(QWidget):
             can_be_dss_mapped = body.kind == "Planet"
             mapped_text = "" if not can_be_dss_mapped or body.mapped is None else ("Yes" if body.mapped else "No")
             priority = self.priority_text(body)
+
+            search_type = self.search_type_combo.currentText()
+            search_item = self.search_item_combo.currentText()
+            search_result = evaluate_search_target(search_type, search_item, body)
+            special_comment = search_result.get("match_text", "")
 
             values = [
                 "" if body.body_id is None else str(body.body_id),
@@ -756,10 +1028,15 @@ class OverlayWindow(QWidget):
                 mapped_text,
                 body.bio_status,
                 priority,
+                special_comment,
             ]
 
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
+
+                # Center text
+                if col == 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 # Row background meanings:
                 # dark red/orange = Earth-like or Water World not DSS mapped
@@ -846,9 +1123,11 @@ class OverlayWindow(QWidget):
         commander = state.commander or "Unknown"
         footer_ship = state.ship_name or friendly_ship_name(state.ship)
 
-        self.footer_label.setText(
-            f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper        v1.1.0-dev"
+        self.footer_left_label.setText(
+            f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
         )
+
+        self.footer_version_label.setText("v1.1.0-dev")
 
         # Keep rows compact even when Bio progress contains widgets
         for row in range(self.table.rowCount()):

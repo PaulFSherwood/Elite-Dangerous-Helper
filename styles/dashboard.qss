@@ -4,7 +4,7 @@ QComboBox#searchCombo {
     border: 1px solid #2A3A48;
     border-radius: 8px;
     padding: 6px 10px;
-    min-width: 150px;
+    min-width: 130px;
 }
 
 QComboBox#searchCombo:hover {
@@ -114,7 +114,26 @@ QTableWidget {
     gridline-color: #243342;
     selection-background-color: #27445C;
     border: 1px solid #2A3A48;
-    border-radius: 10px;
+    border-radius: 6px;
+}
+
+QTableWidget::viewport {
+    background-color: #111A22;
+    border-radius: 8px;
+}
+
+QHeaderView::section {
+    background-color: #1E2B36;
+    color: #DCE6EE;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #2A3A48;
+}
+
+QTableCornerButton::section {
+    background-color: #1E2B36;
+    border: none;
+    border-top-left-radius: 8px;
 }
 
 QHeaderView::section {
@@ -157,6 +176,37 @@ QFrame#specialCard {
     background-color: #16202A;
     border: 1px solid #2A3A48;
     border-radius: 10px;
+}
+
+QFrame#specialMessageCard {
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#searchSelectCard {
+    background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QFrame#searchRulesCard {
+    background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QLabel#searchCardTitle {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 13px;
+    padding: 2px 4px;
+}
+
+QLabel#searchRulesLabel {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 12px;
+    padding: 0px;
 }
 
 QFrame#wideCard {
