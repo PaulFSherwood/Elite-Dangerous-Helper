@@ -243,6 +243,7 @@ def apply_event(state: CommanderState, event: dict) -> bool:
                     terraform_state=event.get("TerraformState", ""),
                     radius_m=event.get("Radius"),
                     surface_temp_k=event.get("SurfaceTemperature"),
+                    rings=event.get("Rings", []),
                 ),
             )
             update_candidate_notes(state, body_name)
@@ -254,6 +255,29 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         if body_name:
             bio, geo = signal_counts(event)
             existing = state.bodies.get(body_name, BodyInfo(name=body_name))
+
+            # Mining hotspots come from SAASignalsFound on a ring body.
+            # Example signal:
+            # { "Type": "Tritium", "Count": 4 }
+            if name == "SAASignalsFound":
+                mining_signals = []
+
+                for sig in event.get("Signals", []):
+                    signal_type = sig.get("Type") or ""
+                    signal_local = sig.get("Type_Localised") or signal_type
+                    count = sig.get("Count", 0)
+
+                    if signal_type or signal_local:
+                        mining_signals.append(
+                            {
+                                "type": signal_type,
+                                "localised": signal_local,
+                                "count": count,
+                            }
+                        )
+
+                if mining_signals:
+                    existing.mining_signals = mining_signals
 
             for sig in event.get("Signals", []):
                 sig_type = (
