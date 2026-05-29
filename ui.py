@@ -457,6 +457,14 @@ class OverlayWindow(QWidget):
             ]
         )
 
+        table_card = QFrame()
+        table_card.setObjectName("tableCard")
+
+        table_card_layout = QVBoxLayout(table_card)
+        table_card_layout.setContentsMargins(6, 6, 6, 6)  # padding around the table
+        table_card_layout.setSpacing(0)
+        table_card_layout.addWidget(self.table, stretch=1)
+
         table_header = self.table.horizontalHeader()
 
         # Start with manual/interactive sizing for every column.
@@ -620,7 +628,7 @@ class OverlayWindow(QWidget):
         layout.setSpacing(HEADER_SPACING)
 
         layout.addLayout(header)
-        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(table_card, stretch=1)
         layout.addLayout(bottom_row, stretch=0)
 
         footer_row = QHBoxLayout()

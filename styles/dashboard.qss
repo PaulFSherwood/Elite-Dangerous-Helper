@@ -113,8 +113,8 @@ QTableWidget {
     color: #E6EDF3;
     gridline-color: #243342;
     selection-background-color: #27445C;
-    border: 1px solid #2A3A48;
-    border-radius: 6px;
+    border: none; /* 1px solid #2A3A48; */
+    border-radius: 15px;
 }
 
 QTableWidget::viewport {
@@ -191,6 +191,12 @@ QFrame#searchSelectCard {
 
 QFrame#searchRulesCard {
     background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
+QFrame#tableCard {
+    background-color: #111A22;
     border: 1px solid #2A3A48;
     border-radius: 10px;
 }
