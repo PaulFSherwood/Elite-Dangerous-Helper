@@ -243,7 +243,7 @@ class OverlayWindow(QWidget):
         self.normal_opacity = 0.78
         self.solid_opacity = 1.0
 
-        self.setWindowTitle("Paul Observatory")
+        self.setWindowTitle("Observatory")
 
         icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
         if icon_path.exists():
