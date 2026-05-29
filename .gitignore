@@ -2,3 +2,10 @@ PreviousVersion*/
 PreviousVersion*
 __pycache__/
 *.pyc
+Journal*.log
+*.log
+.env
+*.key
+*.pem
+id_rsa
+id_ed25519
