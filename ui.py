@@ -44,6 +44,8 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
+VERSION = "v2.0.1-dev"
+
 def load_stylesheet() -> str:
     style_path = Path(__file__).resolve().parent / "styles" / "dashboard.qss"
     if not style_path.exists():
@@ -585,7 +587,7 @@ class OverlayWindow(QWidget):
         self.footer_left_label = QLabel()
         self.footer_left_label.setObjectName("footerLabel")
 
-        self.footer_version_label = QLabel("v1.1.0-dev")
+        self.footer_version_label = QLabel(VERSION)
         self.footer_version_label.setObjectName("footerLabel")
 
         # ------------------------------------------------------------------
@@ -1135,7 +1137,7 @@ class OverlayWindow(QWidget):
             f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
         )
 
-        self.footer_version_label.setText("v1.1.0-dev")
+        self.footer_version_label.setText(VERSION)
 
         # Keep rows compact even when Bio progress contains widgets
         for row in range(self.table.rowCount()):
