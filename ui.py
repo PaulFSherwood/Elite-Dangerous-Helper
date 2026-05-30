@@ -479,18 +479,18 @@ class OverlayWindow(QWidget):
 
         # Small status columns.
         for col in (5, 6, 7):
-            self.table.setColumnWidth(col, 65)
+            self.table.setColumnWidth(col, 60)
 
         # Main body description columns.
         self.table.setColumnWidth(1, 115)   # Body
         self.table.setColumnWidth(2, 80)    # Type
-        self.table.setColumnWidth(3, 95)    # Class
-        self.table.setColumnWidth(4, 85)    # Distance
+        self.table.setColumnWidth(3, 120)   # Class
+        self.table.setColumnWidth(4, 80)    # Distance
 
         # Larger action/result columns.
         self.table.setColumnWidth(8, 255)   # Bio Progress
         self.table.setColumnWidth(9, 115)   # Recommendation
-        self.table.setColumnWidth(10, 205)  # Special / Comments
+        self.table.setColumnWidth(10, 190)  # Special / Comments
 
         # When the window expands, these columns get the extra space.
         # Keep this simple for now: Body + the last three useful text columns.

@@ -1,7 +1,7 @@
 # Elite Journal Helper
 
 A small Linux-native helper for **Elite Dangerous** exploration. 
-<img title="" src="assets\ScreenShot.png" alt="image" width="860" height="425">
+<img title="" src="assets\ScreenShot6.png" alt="image" width="860" height="425">
 
 The app watches Elite Dangerous journal logs, updates live as the game writes new events, and shows an always-on-top PyQt6 window with system, body, DSS, exobiology, and special-signal information.
 
