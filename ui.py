@@ -427,7 +427,7 @@ class OverlayWindow(QWidget):
         stats_bottom_row.setSpacing(6)
         
         self.systems_visited_stat = self.make_stat_chip("★", "Systems visited")
-        self.planets_scanned_stat = self.make_stat_chip("◎", "Planets scanned to level 3")
+        self.planets_scanned_stat = self.make_stat_chip("🌍", "Planets scanned to level 3")
         self.efficient_scans_stat = self.make_stat_chip("🗺", "Efficient DSS scans")
         self.first_footfalls_stat = self.make_stat_chip("👣", "First footfalls")
         
@@ -971,7 +971,7 @@ class OverlayWindow(QWidget):
         target = state.nav_target or "none"
         final = state.nav_final or "none"
 
-        self.update_info_card(self.system_card, "◎", "System", system)
+        self.update_info_card(self.system_card, "🌌", "System", system)
         self.update_info_card(self.target_card, "➜", "Target", target)
         self.update_info_card(self.final_card, "◆", "Final", final)
         self.update_info_card(self.event_card, "✦", "Event", state.last_event or "?")
@@ -1216,7 +1216,7 @@ class OverlayWindow(QWidget):
         )
         
         self.planets_scanned_stat.setText(
-            stat_text("◎", state.planets_scanned_level_3)
+            stat_text("🌍", state.planets_scanned_level_3)
         )
         
         self.efficient_scans_stat.setText(
