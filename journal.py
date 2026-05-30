@@ -483,6 +483,14 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         state.docked = False
         changed = True
 
+    elif name == "Statistics":
+        exploration = event.get("Exploration", {})
+
+        state.systems_visited = exploration.get("Systems_Visited")
+        state.planets_scanned_level_3 = exploration.get("Planets_Scanned_To_Level_3")
+        state.efficient_scans = exploration.get("Efficient_Scans")
+        state.first_footfalls = exploration.get("First_Footfalls")
+
     return changed
 
 

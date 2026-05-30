@@ -81,6 +81,37 @@ class OverlayWindow(QWidget):
 
         return len(body.bio_completed_species) >= body.bio_signals
 
+    def calculate_bio_progress_width(self, bodies: list[BodyInfo]) -> int:
+        min_width = 255
+        max_width = 520
+    
+        pill_padding = 28      # left/right padding inside each pill
+        pill_spacing = 6       # space between pills
+        container_padding = 12 # table cell/layout padding
+    
+        widest = min_width
+    
+        font_metrics = self.fontMetrics()
+    
+        for body in bodies:
+            expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
+    
+            if not expected and body.bio_signals:
+                expected = [f"Bio {i + 1}" for i in range(body.bio_signals)]
+    
+            if not expected:
+                continue
+    
+            row_width = container_padding
+    
+            for name in expected:
+                text_width = font_metrics.horizontalAdvance(name)
+                row_width += text_width + pill_padding + pill_spacing
+    
+            widest = max(widest, row_width)
+    
+        return min(max(widest, min_width), max_width)
+
     def update_info_card(
         self,
         card: QFrame,
@@ -217,6 +248,16 @@ class OverlayWindow(QWidget):
         layout.addLayout(text_box, stretch=1)
 
         return card
+
+    def make_stat_chip(self, icon: str, tooltip: str) -> QLabel:
+        label = QLabel(f"{icon} —")
+        label.setObjectName("commanderStatChip")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setToolTip(tooltip)
+        label.setMinimumWidth(82)
+        label.setMinimumHeight(24)
+
+        return label
 
     def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
         # ------------------------------------------------------------------
@@ -368,9 +409,41 @@ class OverlayWindow(QWidget):
         route_layout.addWidget(self.final_card, stretch=2)
         route_layout.addWidget(self.event_card, stretch=1)
 
+        # Compact commander statistics card.
+        # This sits between the route cards and the opacity toggle.
+        # The labels intentionally use icons + numbers only.
+        # Hover text explains what each stat means.
+        stats_card = QFrame()
+        stats_card.setObjectName("commanderStatsCard")
+        
+        stats_layout = QVBoxLayout(stats_card)
+        stats_layout.setContentsMargins(10, 6, 10, 6)
+        stats_layout.setSpacing(4)
+        
+        stats_top_row = QHBoxLayout()
+        stats_top_row.setSpacing(6)
+        
+        stats_bottom_row = QHBoxLayout()
+        stats_bottom_row.setSpacing(6)
+        
+        self.systems_visited_stat = self.make_stat_chip("★", "Systems visited")
+        self.planets_scanned_stat = self.make_stat_chip("◎", "Planets scanned to level 3")
+        self.efficient_scans_stat = self.make_stat_chip("🗺", "Efficient DSS scans")
+        self.first_footfalls_stat = self.make_stat_chip("👣", "First footfalls")
+        
+        stats_top_row.addWidget(self.systems_visited_stat)
+        stats_top_row.addWidget(self.planets_scanned_stat)
+        
+        stats_bottom_row.addWidget(self.efficient_scans_stat)
+        stats_bottom_row.addWidget(self.first_footfalls_stat)
+        
+        stats_layout.addLayout(stats_top_row)
+        stats_layout.addLayout(stats_bottom_row)
+        
         top_row = QHBoxLayout()
         top_row.setSpacing(ROW_SPACING)
         top_row.addWidget(route_card, stretch=1)
+        top_row.addWidget(stats_card, stretch=0)
         top_row.addWidget(self.opacity_button, stretch=0)
 
         # ------------------------------------------------------------------
@@ -495,7 +568,7 @@ class OverlayWindow(QWidget):
         # When the window expands, these columns get the extra space.
         # Keep this simple for now: Body + the last three useful text columns.
         table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
         table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         table_header.setSectionResizeMode(10, QHeaderView.ResizeMode.Stretch)
 
@@ -1010,9 +1083,12 @@ class OverlayWindow(QWidget):
         bodies = sorted(
                 state.bodies.values(),
                 key=body_sort_key,
-                )
+        )
 
         self.update_search_rules_from_bodies(bodies)
+
+        # Resize Bio Progress based on the widest visible bio pill row.
+        self.table.setColumnWidth(8, self.calculate_bio_progress_width(bodies))
 
         self.table.setRowCount(len(bodies))
 
@@ -1129,6 +1205,27 @@ class OverlayWindow(QWidget):
                 self.table.setRowHeight(row, 32)
             else:
                 self.table.removeCellWidget(row, 8)
+
+        def stat_text(icon: str, value: int | None) -> str:
+            if value is None:
+                return f"{icon} —"
+            return f"{icon} {value:,}"
+        
+        self.systems_visited_stat.setText(
+            stat_text("★", state.systems_visited)
+        )
+        
+        self.planets_scanned_stat.setText(
+            stat_text("◎", state.planets_scanned_level_3)
+        )
+        
+        self.efficient_scans_stat.setText(
+            stat_text("🗺", state.efficient_scans)
+        )
+        
+        self.first_footfalls_stat.setText(
+            stat_text("👣", state.first_footfalls)
+        )
 
         commander = state.commander or "Unknown"
         footer_ship = state.ship_name or friendly_ship_name(state.ship)

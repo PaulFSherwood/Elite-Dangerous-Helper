@@ -68,6 +68,11 @@ class CommanderState:
     special_alerts: list[str] = field(default_factory=list)
     special_seen: set[str] = field(default_factory=set)
 
+    systems_visited: int | None = None
+    planets_scanned_level_3: int | None = None
+    efficient_scans: int | None = None
+    first_footfalls: int | None = None
+
     def log(self, msg: str) -> None:
         self.messages.append(msg)
         self.messages = self.messages[-12:]

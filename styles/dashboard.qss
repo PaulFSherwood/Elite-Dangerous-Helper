@@ -172,6 +172,12 @@ QFrame#infoCard {
     border-radius: 8px;
 }
 
+QFrame#commanderStatsCard {
+    background-color: #121C26;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+}
+
 QFrame#specialCard {
     background-color: #16202A;
     border: 1px solid #2A3A48;
@@ -199,6 +205,22 @@ QFrame#tableCard {
     background-color: #111A22;
     border: 1px solid #2A3A48;
     border-radius: 10px;
+}
+
+QLabel#commanderStatChip {
+    background-color: #0B1117;
+    color: #E6EDF3;
+    border: 1px solid #2A3A48;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+QLabel#commanderStatChip:hover {
+    background-color: #172433;
+    border: 1px solid #4B6B88;
+    color: #FFFFFF;
 }
 
 QLabel#searchCardTitle {
