@@ -73,6 +73,10 @@ class CommanderState:
     efficient_scans: int | None = None
     first_footfalls: int | None = None
 
+    live_updates_enabled: bool = False
+    seen_scan_body_ids: set[int] = field(default_factory=set)
+    seen_first_footfall_bodies: set[int] = field(default_factory=set)
+
     def log(self, msg: str) -> None:
         self.messages.append(msg)
         self.messages = self.messages[-12:]

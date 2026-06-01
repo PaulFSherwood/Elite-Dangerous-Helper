@@ -256,6 +256,7 @@ class OverlayWindow(QWidget):
         label.setToolTip(tooltip)
         label.setMinimumWidth(82)
         label.setMinimumHeight(24)
+        label.setTextFormat(Qt.TextFormat.RichText)
 
         return label
 
@@ -430,6 +431,17 @@ class OverlayWindow(QWidget):
         self.planets_scanned_stat = self.make_stat_chip("🌍", "Planets scanned to level 3")
         self.efficient_scans_stat = self.make_stat_chip("🗺", "Efficient DSS scans")
         self.first_footfalls_stat = self.make_stat_chip("👣", "First footfalls")
+
+
+
+        # Baseline totals captured when the monitor starts.
+        # The blue number shows how much each value increased during this app session.
+        self.session_start_stats = {
+                "systems_visited": None,
+                "planets_scanned_level_3": None,
+                "efficient_scans": None,
+                "first_footfalls": None,
+        }
         
         stats_top_row.addWidget(self.systems_visited_stat)
         stats_top_row.addWidget(self.planets_scanned_stat)
@@ -954,6 +966,30 @@ class OverlayWindow(QWidget):
             f"{condition_text}<br>"
             f"<b>Match when:</b> {best_match_text}"
         )
+    
+    def stat_delta_from_start(self, key: str, current_total: int | None) -> int | None:
+        if current_total is None:
+            return None
+    
+        start_total = self.session_start_stats.get(key)
+    
+        if start_total is None:
+            self.session_start_stats[key] = current_total
+            return 0
+    
+        return max(current_total - start_total, 0)
+    
+    
+    def stat_chip_text(self, icon: str, key: str, current_total: int | None) -> str:
+        if current_total is None:
+            return f"{icon} —"
+    
+        delta = self.stat_delta_from_start(key, current_total)
+    
+        return (
+            f"{icon} {current_total:,} "
+            f"<span style='color:#6CB6FF;'>| +{delta:,}</span>"
+        )
 
     def refresh(self) -> None:
         state = self.monitor.state
@@ -1206,25 +1242,20 @@ class OverlayWindow(QWidget):
             else:
                 self.table.removeCellWidget(row, 8)
 
-        def stat_text(icon: str, value: int | None) -> str:
-            if value is None:
-                return f"{icon} —"
-            return f"{icon} {value:,}"
-        
         self.systems_visited_stat.setText(
-            stat_text("★", state.systems_visited)
+            self.stat_chip_text("🌌", "systems_visited", state.systems_visited)
         )
         
         self.planets_scanned_stat.setText(
-            stat_text("🌍", state.planets_scanned_level_3)
+            self.stat_chip_text("🌍", "planets_scanned_level_3", state.planets_scanned_level_3)
         )
         
         self.efficient_scans_stat.setText(
-            stat_text("🗺", state.efficient_scans)
+            self.stat_chip_text("🗺", "efficient_scans", state.efficient_scans)
         )
         
         self.first_footfalls_stat.setText(
-            stat_text("👣", state.first_footfalls)
+            self.stat_chip_text("👣", "first_footfalls", state.first_footfalls)
         )
 
         commander = state.commander or "Unknown"

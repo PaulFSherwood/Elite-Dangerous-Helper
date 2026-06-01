@@ -142,6 +142,51 @@ def read_nav_route(state: CommanderState, journal_dir: Path) -> None:
 
 def apply_event(state: CommanderState, event: dict) -> bool:
     name = event.get("event")
+
+    # Live commander stat estimates.
+    #
+    # Official totals still come from the Statistics journal event.
+    # These live updates make the visible totals move while playing,
+    # instead of waiting for Elite to write another Statistics event.
+    #
+    # This only runs after journal history loading is complete.
+    if state.live_updates_enabled:
+        if name == "FSDJump":
+            if state.systems_visited is not None:
+                state.systems_visited += 1
+
+        elif name == "Scan" and event.get("PlanetClass"):
+            body_id = event.get("BodyID")
+
+            if body_id is not None and body_id not in state.seen_scan_body_ids:
+                state.seen_scan_body_ids.add(body_id)
+
+                if state.planets_scanned_level_3 is not None:
+                    state.planets_scanned_level_3 += 1
+
+        elif name == "SAAScanComplete":
+            probes_used = event.get("ProbesUsed")
+            efficiency_target = event.get("EfficiencyTarget")
+
+            if (
+                probes_used is not None
+                and efficiency_target is not None
+                and efficiency_target > 0
+                and probes_used <= efficiency_target
+            ):
+                if state.efficient_scans is not None:
+                    state.efficient_scans += 1
+
+        elif name == "Touchdown" and event.get("FirstFootfall") is True:
+            body_id = event.get("BodyID")
+
+            if body_id is not None and body_id not in state.seen_first_footfall_bodies:
+                state.seen_first_footfall_bodies.add(body_id)
+
+                if state.first_footfalls is not None:
+                    state.first_footfalls += 1
+
+
     state.last_event = name
     state.last_timestamp = event.get("timestamp")
 
@@ -508,6 +553,7 @@ class JournalMonitor(QObject):
         self.observer: Optional[Observer] = None
 
     def initialize(self) -> None:
+        self.state.live_updates_enabled = False
         self.current_file = newest_journal_file(self.journal_dir)
         if not self.current_file:
             raise FileNotFoundError(f"No Journal*.log files found in {self.journal_dir}")
@@ -534,6 +580,7 @@ class JournalMonitor(QObject):
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
         read_nav_route(self.state, self.journal_dir)
         self.state.log(f"Watching: {self.current_file.name}")
+        self.state.live_updates_enabled = True
 
     def process_updates(self) -> None:
         with self.lock:
