@@ -118,6 +118,8 @@ def upsert_body(state: CommanderState, body: BodyInfo) -> None:
                 "mining_signals",
             ) and value == []:
                 continue
+            if field_name == "materials" and value == {}:
+                continue
 
             setattr(existing, field_name, value)
     else:

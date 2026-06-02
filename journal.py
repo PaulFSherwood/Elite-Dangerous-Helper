@@ -274,6 +274,15 @@ def apply_event(state: CommanderState, event: dict) -> bool:
                 kind = "Body"
                 subtype = "?"
 
+            materials = {}
+            
+            for material in event.get("Materials", []):
+                mat_name = material.get("Name")
+                mat_percent = material.get("Percent")
+            
+                if mat_name and mat_percent is not None:
+                    materials[mat_name.lower()] = mat_percent
+
             upsert_body(
                 state,
                 BodyInfo(
@@ -288,6 +297,7 @@ def apply_event(state: CommanderState, event: dict) -> bool:
                     terraform_state=event.get("TerraformState", ""),
                     radius_m=event.get("Radius"),
                     surface_temp_k=event.get("SurfaceTemperature"),
+                    materials=materials,
                     rings=event.get("Rings", []),
                 ),
             )

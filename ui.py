@@ -44,7 +44,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v2.0.1-dev"
+VERSION = "v2.0.2-dev"
 
 def load_stylesheet() -> str:
     style_path = Path(__file__).resolve().parent / "styles" / "dashboard.qss"

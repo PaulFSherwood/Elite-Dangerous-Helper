@@ -17,23 +17,31 @@ SEARCH_TYPES = {
         "Grandidierite",
     ],
     "Engineering": [
-        "Selenium",
-        "Tellurium",
-        "Yttrium",
-        "Polonium",
-        "Ruthenium",
-        "Technetium",
-        "Arsenic",
-        "Cadmium",
-        "Niobium",
-        "Vanadium",
-        "Germanium",
-        "Manganese",
-        "Iron",
-        "Nickel",
         "Carbon",
         "Sulphur",
         "Phosphorus",
+        "Iron",
+        "Nickel",
+        "Chromium",
+        "Manganese",
+        "Germanium",
+        "Vanadium",
+        "Selenium",
+        "Zinc",
+        "Zirconium",
+        "Arsenic",
+        "Cadmium",
+        "Mercury",
+        "Niobium",
+        "Tin",
+        "Molybdenum",
+        "Antimony",
+        "Tungsten",
+        "Tellurium",
+        "Ruthenium",
+        "Yttrium",
+        "Polonium",
+        "Technetium",
     ],
 }
 
@@ -101,10 +109,24 @@ MINING_RULES = {
 def get_items_for_type(search_type: str) -> list[str]:
     return SEARCH_TYPES.get(search_type, [])
 
-
 def get_rule_description(search_type: str, item: str) -> dict:
+    if search_type == "None" or item == "None":
+        return {
+            "conditions": [],
+            "match": "No search target selected",
+        }
+
     if search_type == "Mining":
         return MINING_RULES.get(item, {})
+
+    if search_type == "Engineering":
+        return {
+            "conditions": [
+                "Landable body",
+                f"{item} present",
+            ],
+            "match": f"Body material list contains {item}",
+        }
 
     return {}
 
@@ -160,8 +182,40 @@ def body_has_mining_signal(body, item_name: str) -> tuple[bool, int]:
 
     return False, 0
 
+def material_key(name: str) -> str:
+    return name.lower().replace(" ", "")
+
+def body_has_engineering_material(body, material_name: str) -> tuple[bool, float]:
+    wanted = material_key(material_name)
+
+    for mat_name, percent in getattr(body, "materials", {}).items():
+        if material_key(mat_name) == wanted:
+            return True, float(percent)
+
+    return False, 0.0
 
 def evaluate_search_target(search_type: str, search_item: str, body) -> dict:
+    if search_type == "Engineering" and search_item != "None":
+        landable = getattr(body, "landable", False) is True
+        found, percent = body_has_engineering_material(body, search_item)
+
+        conditions = [
+            ("Landable body", landable),
+            (f"{search_item} present", found),
+        ]
+
+        if found:
+            return {
+                "title_confirmed": True,
+                "conditions": conditions,
+                "match_text": f"{search_item}: {percent:.1f}%",
+            }
+
+        return {
+            "title_confirmed": False,
+            "conditions": conditions,
+            "match_text": "",
+        }
     if search_type != "Mining" or search_item == "None":
         return {
             "title_confirmed": False,
