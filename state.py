@@ -29,6 +29,7 @@ class BodyInfo:
     radius_m: Optional[float] = None
     surface_temp_k: Optional[float] = None
 
+    materials: dict[str, float] = field(default_factory=dict)
     rings: list[dict] = field(default_factory=list)
     mining_signals: list[dict] = field(default_factory=list)
     search_match: str = ""
