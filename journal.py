@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+# from db import connect_db, init_db, save_state_snapshot, save_first_footfall
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +31,7 @@ except ImportError:
 
 
 DEFAULT_JOURNAL_CANDIDATES = [
+    "~/Saved Games/Frontier Developments/Elite Dangerous",
     "~/.steam/debian-installation/steamapps/compatdata/359320/pfx/drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous",
     "~/.local/share/Steam/steamapps/compatdata/359320/pfx/drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous",
 ]
@@ -176,16 +178,17 @@ def apply_event(state: CommanderState, event: dict) -> bool:
             ):
                 if state.efficient_scans is not None:
                     state.efficient_scans += 1
-
-        elif name == "Touchdown" and event.get("FirstFootfall") is True:
-            body_id = event.get("BodyID")
-
-            if body_id is not None and body_id not in state.seen_first_footfall_bodies:
-                state.seen_first_footfall_bodies.add(body_id)
-
-                if state.first_footfalls is not None:
-                    state.first_footfalls += 1
-
+        # elif name == "Touchdown" and event.get("FirstFootfall") is True:
+        #     body_id = event.get("BodyID")
+        # 
+        #     if body_id is not None and body_id not in state.seen_first_footfall_bodies:
+        #         state.seen_first_footfall_bodies.add(body_id)
+        # 
+        #         if state.first_footfalls is not None:
+        #             state.first_footfalls += 1
+        # 
+        #         if hasattr(state, "session_first_footfalls_live"):
+        #             state.session_first_footfalls_live += 1
 
     state.last_event = name
     state.last_timestamp = event.get("timestamp")
@@ -451,8 +454,17 @@ def apply_event(state: CommanderState, event: dict) -> bool:
 
             # Analyse is the final 3/3 completion event.
             if scan_type_lower in ("analyse", "analyze"):
+                before_count = len(existing.bio_completed_species)
+
                 add_unique(existing.bio_completed_species, species)
                 add_unique(existing.bio_completed_species, genus)
+
+                after_count = len(existing.bio_completed_species)
+
+                # Count live bio completions only after history loading is done.
+                # This gives the UI a session counter for completed organic scans.
+                if state.live_updates_enabled and after_count > before_count:
+                    state.session_bio_completed += 1
 
             if self_safe_bio_complete(existing):
                 existing.bio_status = "Completed: " + ", ".join(existing.bio_completed_species)
@@ -557,6 +569,8 @@ class JournalMonitor(QObject):
         self.history_files = history_files
         self.journal_dir = journal_dir
         self.state = CommanderState()
+        # self.db = connect_db()
+        # init_db(self.db)
         self.current_file: Optional[Path] = None
         self.position = 0
         self.lock = threading.Lock()
@@ -584,7 +598,11 @@ class JournalMonitor(QObject):
                         continue
                     apply_event(self.state, event)
 
+                    # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
+                    #     save_first_footfall(self.db, self.state, event)
+
         cache_current_system(self.state)
+        # save_state_snapshot(self.db, self.state)
 
         self.position = self.current_file.stat().st_size
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
@@ -632,9 +650,13 @@ class JournalMonitor(QObject):
                     if apply_event(self.state, event):
                         changed = True
 
+                    # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
+                    #     save_first_footfall(self.db, self.state, event)
+
                 self.position = f.tell()
 
             if changed:
+                # save_state_snapshot(self.db, self.state)
                 self.updated.emit()
 
     def start(self) -> None:
@@ -682,6 +704,9 @@ class JournalMonitor(QObject):
             self.state.log("Watchdog missing; UI will not live-update correctly.")
 
     def stop(self) -> None:
+        # save_state_snapshot(self.db, self.state)
+        # self.db.close()
+
         if self.observer:
             self.observer.stop()
             self.observer.join()

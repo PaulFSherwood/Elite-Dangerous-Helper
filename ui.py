@@ -430,7 +430,7 @@ class OverlayWindow(QWidget):
         self.systems_visited_stat = self.make_stat_chip("★", "Systems visited")
         self.planets_scanned_stat = self.make_stat_chip("🌍", "Planets scanned to level 3")
         self.efficient_scans_stat = self.make_stat_chip("🗺", "Efficient DSS scans")
-        self.first_footfalls_stat = self.make_stat_chip("👣", "First footfalls")
+        self.bio_completed_stat = self.make_stat_chip("🧬", "Bio scans completed this session")
 
 
 
@@ -440,14 +440,13 @@ class OverlayWindow(QWidget):
                 "systems_visited": None,
                 "planets_scanned_level_3": None,
                 "efficient_scans": None,
-                "first_footfalls": None,
         }
         
         stats_top_row.addWidget(self.systems_visited_stat)
         stats_top_row.addWidget(self.planets_scanned_stat)
         
         stats_bottom_row.addWidget(self.efficient_scans_stat)
-        stats_bottom_row.addWidget(self.first_footfalls_stat)
+        stats_bottom_row.addWidget(self.bio_completed_stat)
         
         stats_layout.addLayout(stats_top_row)
         stats_layout.addLayout(stats_bottom_row)
@@ -1254,8 +1253,8 @@ class OverlayWindow(QWidget):
             self.stat_chip_text("🗺", "efficient_scans", state.efficient_scans)
         )
         
-        self.first_footfalls_stat.setText(
-            self.stat_chip_text("👣", "first_footfalls", state.first_footfalls)
+        self.bio_completed_stat.setText(
+            f"🧬 <span style='color:#6CB6FF;'>+{state.session_bio_completed:,}</span>"
         )
 
         commander = state.commander or "Unknown"

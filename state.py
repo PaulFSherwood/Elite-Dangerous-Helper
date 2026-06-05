@@ -73,6 +73,7 @@ class CommanderState:
     planets_scanned_level_3: int | None = None
     efficient_scans: int | None = None
     first_footfalls: int | None = None
+    session_bio_completed: int = 0
 
     live_updates_enabled: bool = False
     seen_scan_body_ids: set[int] = field(default_factory=set)
