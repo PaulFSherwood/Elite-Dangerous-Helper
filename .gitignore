@@ -9,3 +9,6 @@ Journal*.log
 *.pem
 id_rsa
 id_ed25519
+*.sqlite
+*.sqlite3
+*.db
