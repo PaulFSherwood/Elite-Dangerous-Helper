@@ -3,6 +3,12 @@
 A small Linux-native helper for **Elite Dangerous** exploration. 
 <img title="" src="assets\ScreenShot6.png" alt="image" width="860" height="425">
 
+Mini:
+
+![ScreenShot-mini-2.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/ScreenShot-mini-2.png)
+
+
+
 The app watches Elite Dangerous journal logs, updates live as the game writes new events, and shows an always-on-top PyQt6 window with system, body, DSS, exobiology, and special-signal information.
 
 This project was recently refactored from one large `ed_journal_probe.py` file into several smaller Python modules.
@@ -50,8 +56,8 @@ assets/               app icon and ship images
   - Confirmed Tritium hotspot signals from `SAASignalsFound`
 - Search condition dots:
   - Red dot = condition not found yet
-  - Green dot = condition found in the current system/body data
-  - Green title = selected target confirmed, such as a Tritium hotspot
+  - Blue dot = condition found while the overall target is still unconfirmed
+  - Green title/dots = selected target fully confirmed, such as a Tritium hotspot
 - Adds a `Special / Comments` table column for search results such as:
   - Possible Tritium prospect: scan icy ring
   - Confirmed Tritium hotspot x4
@@ -74,8 +80,9 @@ assets/               app icon and ship images
 - Tracks exobiology sampling progress.
 - Uses colored Bio Progress pills:
   - Gray = expected organic, not found yet
-  - Green = found or sampling started
-  - Purple with check mark = final `Analyse` / 3-of-3 completed
+  - Amber = found or sampling started
+  - Strong violet with check mark = final `Analyse` / 3-of-3 completed
+- Uses genus-specific biological silhouettes in thin mode and the full Bio Progress pills.
 
 ### Special Signal Detection
 
@@ -100,6 +107,11 @@ assets/               app icon and ship images
 ### Desktop Dashboard UI
 
 - Shows an always-on-top PyQt6 window.
+- Includes a frameless Thin Mode that collapses downward while keeping its lower edge fixed.
+- Thin Mode shows HONK, FSS, TARGETS, and COMPLETE stages without the full dashboard clutter.
+- Completed target planets disappear from Thin Mode while target progress remains visible.
+- The right side shows separate unsold exploration-system and exobiology-sample counters.
+- Exploration and biological counters reset independently when their matching sale journal events occur.
 - Supports ship icons from `assets/ships/`.
 - Supports opacity / solid window toggle.
 - Uses an external runtime stylesheet at `styles/dashboard.qss`.
@@ -165,6 +177,61 @@ styles/dashboard.qss  external UI stylesheet
 assets/               icons and ship images
 ```
 
+## Thin Mode
+
+Use the small mode button in the lower-right corner of the full dashboard to enter Thin Mode.
+
+### Thin Mode Screenshots
+
+Place your mini-mode screenshots in `assets/` and replace the filenames below when ready.
+
+![Observatory-mini-PlanetScan-Started.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/Observatory-mini-PlanetScan-Started.png)
+
+![Observatory-mini-PlanetScan-Complete.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/Observatory-mini-PlanetScan-Complete.png)
+
+
+
+Suggested image order:
+
+```text
+1. FSS progress after honking
+2. Target planets identified
+3. One biological sample started
+4. Biological progress or completed target
+```
+
+Thin Mode is designed to sit above a narrow monitor such as ThinMon. It removes the desktop title bar and presents only current exploration work:
+
+```text
+System | HONK / FSS / TARGETS / COMPLETE | remaining targets | ★ held exploration | ☘ held bio
+```
+
+Stages:
+
+```text
+HONK       waiting for the discovery scan
+FSS        shows identified bodies versus total system bodies
+TARGETS    shows only bodies that still need DSS or biological work
+COMPLETE   no remaining work for the current system
+```
+
+Biological silhouettes represent the expected genus rather than using identical dots. Their colors show progress:
+
+```text
+Gray       expected, not started
+Amber      sampling started
+Violet     Analyse complete
+```
+
+The held-data counters are intentionally separate:
+
+```text
+★  exploration systems held until SellExplorationData
+☘  completed biological samples held until SellOrganicData
+```
+
+These counters are stored through Qt settings and survive closing the application. SQLite history remains inactive.
+
 ## Customizing the UI
 
 The main stylesheet is loaded at runtime from:
@@ -213,8 +280,8 @@ Pill colors:
 
 ```text
 Gray      = expected genus, not found yet
-Green     = found / sampling started
-Purple ✓  = final Analyse / 3-of-3 completed
+Amber     = found / sampling started
+Violet ✓  = final Analyse / 3-of-3 completed
 ```
 
 Example progression:
@@ -259,8 +326,8 @@ Confirmed Tritium hotspot
 The rule display uses simple status colors:
 
 Red dot      = condition not found yet
-Green dot    = condition found
-Green title  = selected item confirmed
+Blue dot     = condition found, but the complete target is not yet confirmed
+Green dot/title = selected item fully confirmed
 A gas giant with an icy ring is treated as a possible Tritium prospect. A SAASignalsFound journal event containing Type: Tritium is treated as confirmed.
 ```
 
@@ -328,7 +395,7 @@ Sensor
 ## Current Limitations
 
 - Module split is early and may still need cleanup.
-- No saved database yet.
+- SQLite history storage is not active; Thin Mode held-data counters use Qt settings instead.
 - No web dashboard yet.
 - No iPhone/mobile dashboard yet.
 - No EDSM/Inara/EDDN integration.

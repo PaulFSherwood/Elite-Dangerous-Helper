@@ -7,13 +7,11 @@ from typing import Optional
 from state import BodyInfo, CommanderState
 
 
-APP_DIR = Path.home() / ".local" / "share" / "observatory"
+APP_DIR = Path(__file__).resolve().parent
 DB_PATH = APP_DIR / "observatory.sqlite"
 
 
 def connect_db() -> sqlite3.Connection:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

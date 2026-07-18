@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
 from state import BodyInfo, CommanderState, cache_current_system, restore_cached_system
 from rules import (
@@ -35,6 +35,57 @@ DEFAULT_JOURNAL_CANDIDATES = [
     "~/.steam/debian-installation/steamapps/compatdata/359320/pfx/drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous",
     "~/.local/share/Steam/steamapps/compatdata/359320/pfx/drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous",
 ]
+
+
+HELD_EXPLORATION_KEY = "held_data/exploration_systems"
+HELD_BIO_KEY = "held_data/bio_samples"
+
+
+def _settings_string_set(settings: QSettings, key: str) -> set[str]:
+    raw = settings.value(key, "[]")
+
+    try:
+        values = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return set()
+
+    if not isinstance(values, list):
+        return set()
+
+    return {str(value) for value in values if value}
+
+
+def load_held_data(state: CommanderState, settings: QSettings) -> None:
+    state.held_exploration_systems = _settings_string_set(
+        settings,
+        HELD_EXPLORATION_KEY,
+    )
+    state.held_bio_samples = _settings_string_set(
+        settings,
+        HELD_BIO_KEY,
+    )
+
+
+def save_held_data(state: CommanderState, settings: QSettings) -> None:
+    settings.setValue(
+        HELD_EXPLORATION_KEY,
+        json.dumps(sorted(state.held_exploration_systems)),
+    )
+    settings.setValue(
+        HELD_BIO_KEY,
+        json.dumps(sorted(state.held_bio_samples)),
+    )
+    settings.sync()
+
+
+def exploration_system_key(state: CommanderState) -> Optional[str]:
+    if state.system_address is not None:
+        return f"addr:{state.system_address}"
+
+    if state.system:
+        return f"name:{state.system.lower()}"
+
+    return None
 
 def resolve_journal_dir(user_path: Optional[str]) -> Path:
     if user_path:
@@ -256,6 +307,12 @@ def apply_event(state: CommanderState, event: dict) -> bool:
     elif name == "FSSDiscoveryScan":
         state.body_count = event.get("BodyCount", state.body_count)
         state.non_body_count = event.get("NonBodyCount", state.non_body_count)
+
+        if state.live_updates_enabled:
+            system_key = exploration_system_key(state)
+            if system_key:
+                state.held_exploration_systems.add(system_key)
+
         state.log(f"Honk complete: {state.body_count} bodies detected")
         changed = True
 
@@ -265,6 +322,11 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         changed = True
 
     elif name == "Scan":
+        if state.live_updates_enabled:
+            system_key = exploration_system_key(state)
+            if system_key:
+                state.held_exploration_systems.add(system_key)
+
         body_name = event.get("BodyName")
         if body_name:
             if "StarType" in event:
@@ -462,9 +524,19 @@ def apply_event(state: CommanderState, event: dict) -> bool:
                 after_count = len(existing.bio_completed_species)
 
                 # Count live bio completions only after history loading is done.
-                # This gives the UI a session counter for completed organic scans.
+                # Also keep one unsold sample per body/species until Vista
+                # Genomics writes SellOrganicData.
                 if state.live_updates_enabled and after_count > before_count:
                     state.session_bio_completed += 1
+
+                    sample_key = "|".join(
+                        (
+                            str(state.system_address or state.system or "?"),
+                            str(event.get("BodyID") or body_name),
+                            str(event.get("Species") or species),
+                        )
+                    )
+                    state.held_bio_samples.add(sample_key)
 
             if self_safe_bio_complete(existing):
                 existing.bio_status = "Completed: " + ", ".join(existing.bio_completed_species)
@@ -550,6 +622,20 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         state.docked = False
         changed = True
 
+    elif name == "SellExplorationData":
+        if state.live_updates_enabled:
+            sold_count = len(state.held_exploration_systems)
+            state.held_exploration_systems.clear()
+            state.log(f"Exploration data sold: {sold_count} systems cleared")
+        changed = True
+
+    elif name == "SellOrganicData":
+        if state.live_updates_enabled:
+            sold_count = len(state.held_bio_samples)
+            state.held_bio_samples.clear()
+            state.log(f"Biological data sold: {sold_count} samples cleared")
+        changed = True
+
     elif name == "Statistics":
         exploration = event.get("Exploration", {})
 
@@ -568,7 +654,9 @@ class JournalMonitor(QObject):
         super().__init__()
         self.history_files = history_files
         self.journal_dir = journal_dir
+        self.settings = QSettings("GrrWooD", "EliteDangerousObservatory")
         self.state = CommanderState()
+        load_held_data(self.state, self.settings)
         # self.db = connect_db()
         # init_db(self.db)
         self.current_file: Optional[Path] = None
@@ -649,6 +737,15 @@ class JournalMonitor(QObject):
 
                     if apply_event(self.state, event):
                         changed = True
+
+                    if event.get("event") in {
+                        "FSSDiscoveryScan",
+                        "Scan",
+                        "ScanOrganic",
+                        "SellExplorationData",
+                        "SellOrganicData",
+                    }:
+                        save_held_data(self.state, self.settings)
 
                     # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
                     #     save_first_footfall(self.db, self.state, event)

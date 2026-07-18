@@ -75,6 +75,11 @@ class CommanderState:
     first_footfalls: int | None = None
     session_bio_completed: int = 0
 
+    # Unsold exploration and exobiology data.
+    # Sets prevent duplicate journal events from increasing the counters.
+    held_exploration_systems: set[str] = field(default_factory=set)
+    held_bio_samples: set[str] = field(default_factory=set)
+
     live_updates_enabled: bool = False
     seen_scan_body_ids: set[int] = field(default_factory=set)
     seen_first_footfall_bodies: set[int] = field(default_factory=set)

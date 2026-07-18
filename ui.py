@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings, QSize, QRect
 from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QWidget,
@@ -18,11 +18,13 @@ from PyQt6.QtWidgets import (
     QFrame,
     QSizePolicy,
     QComboBox,
+    QButtonGroup,
 )
 
 from journal import JournalMonitor
 from state import BodyInfo
 from rules import bio_key
+from bio_icons import bio_icon_html
 from ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
 from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description, evaluate_search_target
 
@@ -32,11 +34,11 @@ WINDOW_HEIGHT = 715
 WINDOW_MIN_WIDTH = 900
 WINDOW_MIN_HEIGHT = 500
 
-SPECIAL_HEIGHT = 82
+SPECIAL_HEIGHT = 92
 ROUTE_HEIGHT = 70
 STATUS_HEIGHT = 70
 
-TABLE_MIN_HEIGHT = 260
+TABLE_MIN_HEIGHT = 270
 
 BOTTOM_HEIGHT = 135
 FOOTER_HEIGHT = 28
@@ -44,7 +46,9 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v2.0.2-dev"
+VERSION = "v2.6.1"
+THIN_HEIGHT = 48
+THIN_MIN_WIDTH = 760
 
 def load_stylesheet() -> str:
     style_path = Path(__file__).resolve().parent / "styles" / "dashboard.qss"
@@ -82,8 +86,8 @@ class OverlayWindow(QWidget):
         return len(body.bio_completed_species) >= body.bio_signals
 
     def calculate_bio_progress_width(self, bodies: list[BodyInfo]) -> int:
-        min_width = 255
-        max_width = 520
+        min_width = 320
+        max_width = 640
     
         pill_padding = 28      # left/right padding inside each pill
         pill_spacing = 6       # space between pills
@@ -161,13 +165,21 @@ class OverlayWindow(QWidget):
             self.update_search_rules_label()
 
     def update_search_rules_label(self) -> None:
-        search_type = self.search_type_combo.currentText()
+        if hasattr(self, "search_rules_card"):
+            self.search_rules_card.setProperty("confirmed", "false")
+            self.search_rules_card.style().unpolish(self.search_rules_card)
+            self.search_rules_card.style().polish(self.search_rules_card)
+            self.search_rules_card.update()
+
+        search_type = self.search_type_combo.currentText().replace("⚒ ", "").replace("⚙ ", "")
         search_item = self.search_item_combo.currentText()
+        search_type = self.clean_search_type()
+        search_item = self.clean_search_item()
 
         if search_type == "None" or search_item == "None":
             self.search_rules_label.setText(
-                "<b style='color:#60A5FA;'>Search rules</b><br>"
-                "No search target selected."
+                "<b style='color:#60A5FA;'>Search target</b><br>"
+                "No target selected."
             )
             return
 
@@ -175,8 +187,6 @@ class OverlayWindow(QWidget):
         conditions = rule.get("conditions", [])
         match = rule.get("match", "")
 
-        # This top card shows the rule definition, not a current-system result.
-        # Later refresh() will update this again with detected red/green status.
         condition_text = " &nbsp;&nbsp;&nbsp;&nbsp; ".join(
             f"<span style='color:#EF4444;'>●</span> {condition}"
             for condition in conditions
@@ -186,13 +196,30 @@ class OverlayWindow(QWidget):
             condition_text = "No rule defined"
 
         self.search_rules_label.setText(
-            f"<b style='color:#60A5FA;'>{search_item} conditions:</b><br>"
+            f"<b style='color:#60A5FA;'>{search_type}: {search_item}</b><br>"
             f"{condition_text}<br>"
-            f"<b>Match when:</b> {match}"
+            f"<span style='color:#9FB0BF;'>Watching:</span> {match}"
+        )
+
+    def clean_search_type(self) -> str:
+        return (
+            self.search_type_combo.currentText()
+            .replace("⚒ ", "")
+            .replace("⚙ ", "")
+        )
+    
+    
+    def clean_search_item(self) -> str:
+        return (
+            self.search_item_combo.currentText()
+            .replace("💎 ", "")
+            .replace("⚛ ", "")
         )
 
     def update_search_item_dropdown(self) -> None:
-        search_type = self.search_type_combo.currentText()
+        search_type = self.search_type_combo.currentText().replace("⚒ ", "").replace("⚙ ", "")
+        search_type = self.clean_search_type()
+        search_item = self.clean_search_item()
         items = get_items_for_type(search_type)
 
         self.search_item_combo.blockSignals(True)
@@ -202,12 +229,121 @@ class OverlayWindow(QWidget):
             self.search_item_combo.addItem("None")
             self.search_item_combo.setEnabled(False)
         else:
-            self.search_item_combo.addItems(items)
+            for item in items:
+                if search_type == "Mining":
+                    self.search_item_combo.addItem(f"💎 {item}")
+                elif search_type == "Engineering":
+                    self.search_item_combo.addItem(f"⚛ {item}")
+                else:
+                    self.search_item_combo.addItem(item)
             self.search_item_combo.setEnabled(True)
 
         self.search_item_combo.blockSignals(False)
         # self.update_search_rules_label()
         self.search_selection_changed()
+
+    def set_table_filter(self, mode: str) -> None:
+        self.table_filter_mode = mode
+
+        for button in self.table_filter_buttons:
+            is_active = button.text() == mode
+            button.setChecked(is_active)
+            button.setProperty("active", "true" if is_active else "false")
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
+
+        if hasattr(self, "table"):
+            self.refresh()
+
+    def make_table_filter_button(self, text: str) -> QPushButton:
+        button = QPushButton(text)
+        button.setObjectName("tableFilterButton")
+        button.setCheckable(True)
+        button.setMinimumHeight(24)
+        button.clicked.connect(lambda _checked=False, mode=text: self.set_table_filter(mode))
+        return button
+
+    def search_result_for_body(self, body: BodyInfo) -> dict:
+        search_type = self.search_type_combo.currentText().replace("⚒ ", "").replace("⚙ ", "")
+        search_item = self.search_item_combo.currentText()
+        return evaluate_search_target(search_type, search_item, body)
+
+    def body_passes_filter(self, body: BodyInfo) -> bool:
+        mode = getattr(self, "table_filter_mode", "All")
+
+        if mode == "All":
+            return True
+
+        high_value = self.is_high_value_world(body)
+        search_text = self.search_result_for_body(body).get("match_text", "")
+
+        if mode == "Action":
+            return bool(
+                search_text
+                or body.special_note
+                or (high_value and body.mapped is not True)
+                or (body.bio_signals and body.bio_signals > 0 and not self.bio_complete(body))
+                or (body.kind == "Planet" and body.mapped is False)
+                or body.scanned is False
+            )
+
+        if mode == "Bio":
+            return bool(body.bio_signals and body.bio_signals > 0)
+
+        if mode == "High-value":
+            return high_value
+
+        if mode == "Search":
+            return bool(search_text)
+
+        return True
+
+    def bio_progress_summary(self, body: BodyInfo) -> str:
+        if not body.bio_signals or body.bio_signals <= 0:
+            return ""
+
+        expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
+        expected_count = len(expected) if expected else body.bio_signals
+        completed_count = len(body.bio_completed_species)
+
+        # Completed species often includes both genus and species labels. Cap the
+        # display so it does not claim more than the expected biological count.
+        completed_count = min(completed_count, expected_count)
+        remaining = max(expected_count - completed_count, 0)
+
+        if remaining == 0 and completed_count > 0:
+            return f"Bio complete {completed_count}/{expected_count}"
+
+        return f"Bio {completed_count}/{expected_count} — {remaining} remaining"
+
+    def notes_for_body(self, body: BodyInfo) -> str:
+        notes: list[str] = []
+        search_text = self.search_result_for_body(body).get("match_text", "")
+
+        if search_text:
+            notes.append(search_text)
+
+        high_value = self.is_high_value_world(body)
+        if high_value and body.mapped is not True:
+            notes.append("High-value — DSS needed")
+        elif high_value and body.mapped is True:
+            notes.append("High-value mapped")
+
+        bio_summary = self.bio_progress_summary(body)
+        if bio_summary:
+            notes.append(bio_summary)
+
+        if body.kind == "Planet" and body.mapped is False and not high_value:
+            notes.append("Unmapped planet")
+
+        if body.scanned is False:
+            notes.append("Not FSS scanned")
+
+        if body.special_note:
+            notes.append(body.special_note)
+
+        return " • ".join(notes)
 
     def make_info_card(self, icon: str, title: str, value: str) -> QFrame:
         card = QFrame()
@@ -254,11 +390,18 @@ class OverlayWindow(QWidget):
         label.setObjectName("commanderStatChip")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setToolTip(tooltip)
-        label.setMinimumWidth(82)
-        label.setMinimumHeight(24)
+        label.setMinimumWidth(104)
+        label.setMinimumHeight(30)
         label.setTextFormat(Qt.TextFormat.RichText)
 
         return label
+
+    def make_route_separator(self) -> QFrame:
+        separator = QFrame()
+        separator.setObjectName("routeSeparator")
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFixedWidth(1)
+        return separator
 
     def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
         # ------------------------------------------------------------------
@@ -279,6 +422,12 @@ class OverlayWindow(QWidget):
 
         super().__init__(flags=flags)
         self.monitor = monitor
+        self.settings = QSettings("GrrWooD", "EliteDangerousObservatory")
+        self.thin_mode = False
+        self.full_size = QSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.full_geometry = self.geometry()
+        self.thin_target_system: Optional[str] = None
+        self.thin_known_targets: set[str] = set()
 
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -310,12 +459,15 @@ class OverlayWindow(QWidget):
         self.special_icon_label = QLabel("✦")
         self.special_icon_label.setObjectName("specialIcon")
 
-        self.special_label = QLabel("Special: none detected in this system")
+        self.special_label = QLabel("No special signals")
         self.special_label.setObjectName("specialText")
 
         self.search_type_combo = QComboBox()
-        self.search_type_combo.addItems(SEARCH_TYPES.keys())
         self.search_type_combo.setObjectName("searchCombo")
+
+        self.search_type_combo.addItem("None")
+        self.search_type_combo.addItem("⚒ Mining")
+        self.search_type_combo.addItem("⚙ Engineering")
 
         self.search_item_combo = QComboBox()
         self.search_item_combo.setObjectName("searchCombo")
@@ -331,12 +483,26 @@ class OverlayWindow(QWidget):
         special_layout.setSpacing(10)
 
         # Left side: special alert message.
+        # Left side: special alert message.
         special_message_card = QFrame()
         special_message_card.setObjectName("specialMessageCard")
-
+        special_message_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        
         special_message_layout = QHBoxLayout(special_message_card)
-        special_message_layout.setContentsMargins(10, 4, 10, 4)
+        special_message_layout.setContentsMargins(12, 6, 14, 6)
         special_message_layout.setSpacing(8)
+        
+        self.special_icon_label.setFixedWidth(28)
+        self.special_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.special_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
+        )
+        
         special_message_layout.addWidget(self.special_icon_label)
         special_message_layout.addWidget(self.special_label)
 
@@ -366,7 +532,7 @@ class OverlayWindow(QWidget):
 
         # Full special/search row.
         special_layout.addWidget(special_message_card, stretch=1)
-        special_layout.addWidget(search_select_card, stretch=0)
+        special_layout.addWidget(search_select_card, stretch=1)
         special_layout.addWidget(self.search_rules_card, stretch=1)
 
         # Connect the dropdowns after they exist.
@@ -406,8 +572,11 @@ class OverlayWindow(QWidget):
         self.event_card = self.make_info_card("✦", "Event", "?")
 
         route_layout.addWidget(self.system_card, stretch=2)
+        route_layout.addWidget(self.make_route_separator())
         route_layout.addWidget(self.target_card, stretch=2)
+        route_layout.addWidget(self.make_route_separator())
         route_layout.addWidget(self.final_card, stretch=2)
+        route_layout.addWidget(self.make_route_separator())
         route_layout.addWidget(self.event_card, stretch=1)
 
         # Compact commander statistics card.
@@ -418,14 +587,14 @@ class OverlayWindow(QWidget):
         stats_card.setObjectName("commanderStatsCard")
         
         stats_layout = QVBoxLayout(stats_card)
-        stats_layout.setContentsMargins(10, 6, 10, 6)
-        stats_layout.setSpacing(4)
+        stats_layout.setContentsMargins(1, 1, 1, 1)
+        stats_layout.setSpacing(1)
         
         stats_top_row = QHBoxLayout()
-        stats_top_row.setSpacing(6)
+        stats_top_row.setSpacing(1)
         
         stats_bottom_row = QHBoxLayout()
-        stats_bottom_row.setSpacing(6)
+        stats_bottom_row.setSpacing(1)
         
         self.systems_visited_stat = self.make_stat_chip("★", "Systems visited")
         self.planets_scanned_stat = self.make_stat_chip("🌍", "Planets scanned to level 3")
@@ -523,7 +692,7 @@ class OverlayWindow(QWidget):
         # ------------------------------------------------------------------
 
         self.table = QTableWidget()
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(8)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(True)
 
@@ -534,12 +703,9 @@ class OverlayWindow(QWidget):
                 "Type",
                 "Class",
                 "Distance",
-                "Bio",
-                "Geo",
                 "DSS",
                 "Bio Progress",
-                "Recommendation",
-                "Special / Comments",
+                "Notes & Signals",
             ]
         )
 
@@ -547,44 +713,51 @@ class OverlayWindow(QWidget):
         table_card.setObjectName("tableCard")
 
         table_card_layout = QVBoxLayout(table_card)
-        table_card_layout.setContentsMargins(6, 6, 6, 6)  # padding around the table
-        table_card_layout.setSpacing(0)
+        table_card_layout.setContentsMargins(6, 6, 6, 6)
+        table_card_layout.setSpacing(6)
+
+        table_toolbar = QHBoxLayout()
+        table_toolbar.setContentsMargins(2, 0, 2, 0)
+        table_toolbar.setSpacing(6)
+
+        table_title = QLabel("Body Table")
+        table_title.setObjectName("tableTitle")
+        table_toolbar.addWidget(table_title)
+        table_toolbar.addStretch()
+
+        self.table_filter_mode = "All"
+        self.table_filter_buttons = []
+        self.table_filter_group = QButtonGroup(self)
+        self.table_filter_group.setExclusive(True)
+
+        for filter_name in ("All", "Action", "Bio", "High-value", "Search"):
+            button = self.make_table_filter_button(filter_name)
+            self.table_filter_buttons.append(button)
+            self.table_filter_group.addButton(button)
+            table_toolbar.addWidget(button)
+
+        table_card_layout.addLayout(table_toolbar)
         table_card_layout.addWidget(self.table, stretch=1)
 
         table_header = self.table.horizontalHeader()
 
-        # Start with manual/interactive sizing for every column.
-        # This makes setColumnWidth() actually matter.
-        for col in range(11):
+        for col in range(8):
             table_header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
 
-        # ID is smaller than the other compact status columns.
-        self.table.setColumnWidth(0, 32)
-
-        # Small status columns.
-        for col in (5, 6, 7):
-            self.table.setColumnWidth(col, 60)
-
-        # Main body description columns.
-        self.table.setColumnWidth(1, 115)   # Body
+        self.table.setColumnWidth(0, 34)    # ID
+        self.table.setColumnWidth(1, 170)   # Body
         self.table.setColumnWidth(2, 80)    # Type
-        self.table.setColumnWidth(3, 120)   # Class
-        self.table.setColumnWidth(4, 80)    # Distance
+        self.table.setColumnWidth(3, 135)   # Class
+        self.table.setColumnWidth(4, 85)    # Distance
+        self.table.setColumnWidth(5, 85)    # DSS
+        self.table.setColumnWidth(6, 360)   # Bio Progress
+        self.table.setColumnWidth(7, 270)   # Notes & Signals
 
-        # Larger action/result columns.
-        self.table.setColumnWidth(8, 255)   # Bio Progress
-        self.table.setColumnWidth(9, 115)   # Recommendation
-        self.table.setColumnWidth(10, 190)  # Special / Comments
-
-        # When the window expands, these columns get the extra space.
-        # Keep this simple for now: Body + the last three useful text columns.
         table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table_header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        table_header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
-        table_header.setSectionResizeMode(10, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
+        table_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
 
         table_header.setStretchLastSection(False)
-        # self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -628,8 +801,8 @@ class OverlayWindow(QWidget):
         <tr>
         <td><b>Bio Progress</b></td>
         <td><span style="background-color:#3A3A3A; color:#3A3A3A;">■■</span> expected</td>
-        <td><span style="background-color:#1F5A32; color:#1F5A32;">■■</span> found</td>
-        <td><span style="background-color:#CBC3E3; color:#CBC3E3;">■■</span> complete</td>
+        <td><span style="background-color:#D69E2E; color:#D69E2E;">■■</span> in progress</td>
+        <td><span style="background-color:#7C3AED; color:#7C3AED;">■■</span> complete</td>
         </tr>
         <tr>
         <td><b>DSS</b></td>
@@ -673,6 +846,12 @@ class OverlayWindow(QWidget):
 
         self.footer_version_label = QLabel(VERSION)
         self.footer_version_label.setObjectName("footerLabel")
+
+        self.full_mode_button = QPushButton("▁")
+        self.full_mode_button.setObjectName("modeToggleButton")
+        self.full_mode_button.setToolTip("Switch to thin view")
+        self.full_mode_button.setFixedSize(28, 24)
+        self.full_mode_button.clicked.connect(self.toggle_view_mode)
 
         # ------------------------------------------------------------------
         # 8. Apply fixed section heights
@@ -722,11 +901,66 @@ class OverlayWindow(QWidget):
         footer_row.setSpacing(0)
         footer_row.addWidget(self.footer_left_label)
         footer_row.addStretch()
+        footer_row.addWidget(self.full_mode_button)
         footer_row.addWidget(self.footer_version_label)
 
         layout.addLayout(footer_row)
 
-        self.setLayout(layout)
+        self.full_content = QWidget()
+        self.full_content.setObjectName("fullContent")
+        self.full_content.setLayout(layout)
+
+        self.thin_card = QFrame()
+        self.thin_card.setObjectName("thinCard")
+        self.thin_card.setFixedHeight(THIN_HEIGHT - 6)
+
+        thin_layout = QHBoxLayout(self.thin_card)
+        thin_layout.setContentsMargins(10, 3, 6, 3)
+        thin_layout.setSpacing(8)
+
+        self.thin_system_label = QLabel("Waiting for journal data")
+        self.thin_system_label.setObjectName("thinSystem")
+        self.thin_system_label.setMinimumWidth(180)
+        self.thin_system_label.setToolTip(
+            "Current system. Hover here for exploration totals."
+        )
+
+        self.thin_status_label = QLabel("")
+        self.thin_status_label.setObjectName("thinStatus")
+        self.thin_status_label.setTextFormat(Qt.TextFormat.RichText)
+        self.thin_status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        self.thin_held_data_label = QLabel("★ 0  │  ☘ 0")
+        self.thin_held_data_label.setObjectName("thinHeldData")
+        self.thin_held_data_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.thin_held_data_label.setMinimumWidth(100)
+        self.thin_held_data_label.setToolTip(
+            "★ systems with unsold exploration data\n"
+            "☘ completed biological samples not yet sold"
+        )
+
+        self.thin_mode_button = QPushButton("▣")
+        self.thin_mode_button.setObjectName("modeToggleButton")
+        self.thin_mode_button.setToolTip("Return to full view")
+        self.thin_mode_button.setFixedSize(28, 28)
+        self.thin_mode_button.clicked.connect(self.toggle_view_mode)
+
+        thin_layout.addWidget(self.thin_system_label)
+        thin_layout.addWidget(self.make_route_separator())
+        thin_layout.addWidget(self.thin_status_label, stretch=1)
+        thin_layout.addWidget(self.make_route_separator())
+        thin_layout.addWidget(self.thin_held_data_label)
+        thin_layout.addWidget(self.thin_mode_button)
+
+        root_layout = QVBoxLayout()
+        root_layout.setContentsMargins(6, 3, 6, 3)
+        root_layout.setSpacing(0)
+        root_layout.addWidget(self.full_content)
+        root_layout.addWidget(self.thin_card)
+        self.setLayout(root_layout)
+        self.thin_card.hide()
 
         # ------------------------------------------------------------------
         # 10. Stylesheet and live updates
@@ -737,8 +971,265 @@ class OverlayWindow(QWidget):
 
         self.setStyleSheet(load_stylesheet())
 
+        self.set_table_filter("All")
         self.monitor.updated.connect(self.refresh)
         self.refresh()
+
+        saved_mode = self.settings.value("thin_mode", False, type=bool)
+        if saved_mode:
+            self.set_view_mode(True)
+
+    def toggle_view_mode(self) -> None:
+        self.set_view_mode(not self.thin_mode)
+
+    def set_view_mode(self, thin: bool) -> None:
+        if thin == self.thin_mode:
+            return
+
+        current_geometry = self.geometry()
+        old_bottom = current_geometry.bottom()
+
+        if thin:
+            # Save full-window state before changing flags or size.
+            self.full_size = self.size()
+            self.full_geometry = current_geometry
+
+            self.full_content.hide()
+            self.thin_card.show()
+
+            # Remove the desktop title bar in thin mode.
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+            self.show()
+
+            self.setMinimumSize(THIN_MIN_WIDTH, THIN_HEIGHT)
+            self.setMaximumHeight(THIN_HEIGHT)
+
+            new_width = max(current_geometry.width(), THIN_MIN_WIDTH)
+            new_geometry = QRect(
+                current_geometry.x(),
+                current_geometry.y(),
+                new_width,
+                THIN_HEIGHT,
+            )
+
+            # Keep the old bottom edge fixed, making the window collapse downward.
+            new_geometry.moveBottom(old_bottom)
+            self.setGeometry(new_geometry)
+
+        else:
+            # Restore the normal desktop title bar.
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, False)
+            self.show()
+
+            self.thin_card.hide()
+            self.full_content.show()
+
+            self.setMaximumHeight(16777215)
+            self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+
+            if hasattr(self, "full_geometry"):
+                self.setGeometry(self.full_geometry)
+            else:
+                self.resize(self.full_size)
+
+        self.thin_mode = thin
+        self.settings.setValue("thin_mode", thin)
+        self.refresh_thin_view()
+
+    def short_body_name(self, body: BodyInfo) -> str:
+        system = self.monitor.state.system or ""
+        name = body.name
+        if system and name.startswith(system):
+            name = name[len(system):].strip()
+        return name or str(body.body_id or "?")
+
+    def target_complete(self, body: BodyInfo) -> bool:
+        needs_dss = self.is_high_value_world(body)
+        needs_bio = bool(body.bio_signals and body.bio_signals > 0)
+        dss_done = (not needs_dss) or body.mapped is True
+        bio_done = (not needs_bio) or self.bio_complete(body)
+        return dss_done and bio_done
+
+    def bio_progress_icons(self, body: BodyInfo) -> str:
+        expected = (
+            body.bio_expected_genuses[:]
+            if body.bio_expected_genuses
+            else body.bio_species[:]
+        )
+        count = len(expected) if expected else int(body.bio_signals or 0)
+        if count <= 0:
+            return ""
+
+        if not expected:
+            expected = [f"Bio {index + 1}" for index in range(count)]
+
+        started = {bio_key(name) for name in body.bio_species if name}
+        completed = {
+            bio_key(name)
+            for name in body.bio_completed_species
+            if name
+        }
+        icons: list[str] = []
+
+        for index, name in enumerate(expected):
+            key = bio_key(name)
+            if (key and key in completed) or (
+                not key and index < len(body.bio_completed_species)
+            ):
+                color = "#7C3AED"
+            elif (key and key in started) or (
+                not key and index < len(body.bio_species)
+            ):
+                color = "#D69E2E"
+            else:
+                color = "#707780"
+
+            icons.append(bio_icon_html(name, color, size=15))
+
+        return "&nbsp;".join(icons)
+
+    def thin_target_html(self, body: BodyInfo) -> str:
+        name = self.short_body_name(body)
+        parts = [f"<b>{name}</b>"]
+        if self.is_high_value_world(body) and body.mapped is not True:
+            parts.append("<span style='color:#EF5350;'>◆</span>")
+        bio = self.bio_progress_icons(body)
+        if bio:
+            parts.append(bio)
+        return " ".join(parts)
+
+    def refresh_thin_view(self) -> None:
+        if not hasattr(self, "thin_status_label"):
+            return
+
+        state = self.monitor.state
+        system = state.system or "Unknown system"
+        self.thin_system_label.setText(system)
+        self.thin_held_data_label.setText(
+            f"★ {len(state.held_exploration_systems)}"
+            f"  │  ☘ {len(state.held_bio_samples)}"
+        )
+
+        # Keep lifetime/session statistics available without occupying bar space.
+        tooltip_lines = [f"Current system: {system}"]
+        if state.systems_visited is not None:
+            tooltip_lines.append(f"Systems visited: {state.systems_visited:,}")
+        if state.planets_scanned_level_3 is not None:
+            tooltip_lines.append(
+                f"Planets scanned to level 3: {state.planets_scanned_level_3:,}"
+            )
+        if state.efficient_scans is not None:
+            tooltip_lines.append(f"Efficient DSS scans: {state.efficient_scans:,}")
+        tooltip_lines.append(
+            f"Biological scans completed this session: "
+            f"{state.session_bio_completed:,}"
+        )
+        self.thin_system_label.setToolTip("\n".join(tooltip_lines))
+
+        if self.thin_target_system != system:
+            self.thin_target_system = system
+            self.thin_known_targets.clear()
+
+        bodies = list(state.bodies.values())
+        scanned = [
+            body
+            for body in bodies
+            if body.scanned and body.kind in ("Planet", "Star")
+        ]
+        total = state.body_count
+
+        scan_complete = bool(
+            total is not None
+            and total > 0
+            and len(scanned) >= total
+        )
+
+        if not scan_complete:
+            if total is None:
+                self.thin_status_label.setText(
+                    "<b style='color:#9FB0BF;'>HONK</b>"
+                    "&nbsp;&nbsp;│&nbsp;&nbsp;"
+                    "<span style='color:#9FB0BF;'>Discover system bodies</span>"
+                )
+                return
+
+            scanned_count = min(len(scanned), total)
+            dots: list[str] = []
+
+            for index in range(total):
+                # Neutral silver means identified; dark gray means still unknown.
+                color = "#8B929A" if index < scanned_count else "#3A4149"
+                dots.append(f"<span style='color:{color};'>●</span>")
+
+            dot_text = "&nbsp;".join(dots)
+            self.thin_status_label.setText(
+                f"<b style='color:#60A5FA;'>FSS {scanned_count}/{total}</b>"
+                f"&nbsp;&nbsp;│&nbsp;&nbsp;{dot_text}"
+            )
+            return
+
+        current_targets = [
+            body
+            for body in bodies
+            if body.kind == "Planet"
+            and (
+                self.is_high_value_world(body)
+                or bool(body.bio_signals and body.bio_signals > 0)
+            )
+        ]
+        self.thin_known_targets.update(body.name for body in current_targets)
+
+        target_by_name = {body.name: body for body in current_targets}
+        completed = 0
+        remaining: list[BodyInfo] = []
+
+        for name in sorted(self.thin_known_targets):
+            body = target_by_name.get(name)
+            if body is None:
+                continue
+
+            if self.target_complete(body):
+                completed += 1
+            else:
+                remaining.append(body)
+
+        total_targets = len(self.thin_known_targets)
+
+        if total_targets == 0:
+            self.thin_status_label.setText(
+                "<b style='color:#22C55E;'>COMPLETE</b>"
+                "&nbsp;&nbsp;│&nbsp;&nbsp;"
+                "<span style='color:#9FB0BF;'>No scan targets</span>"
+            )
+            return
+
+        if completed >= total_targets:
+            self.thin_status_label.setText(
+                f"<b style='color:#22C55E;'>COMPLETE</b>"
+                f"&nbsp;&nbsp;│&nbsp;&nbsp;"
+                f"<span style='color:#9FB0BF;'>Targets {completed}/{total_targets}</span>"
+            )
+            return
+
+        remaining.sort(
+            key=lambda body: (
+                body.distance_ls is None,
+                body.distance_ls or 0,
+                body.body_id or 999999,
+            )
+        )
+
+        entries = [self.thin_target_html(body) for body in remaining]
+        details = "&nbsp;&nbsp;│&nbsp;&nbsp;".join(entries)
+
+        self.thin_status_label.setText(
+            f"<b style='color:#D69E2E;'>TARGETS {completed}/{total_targets}</b>"
+            + (
+                "&nbsp;&nbsp;│&nbsp;&nbsp;" + details
+                if details
+                else ""
+            )
+        )
 
     def is_high_value_world(self, body: BodyInfo) -> bool:
         subtype = (body.subtype or "").lower()
@@ -838,62 +1329,60 @@ class OverlayWindow(QWidget):
         layout = QHBoxLayout(container)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(4)
-
+    
         expected = body.bio_expected_genuses[:] if body.bio_expected_genuses else body.bio_species[:]
-
-        # If we only know "3 biological signals" but not names yet,
-        # show Bio 1 / Bio 2 / Bio 3.
+    
         if not expected and body.bio_signals:
             expected = [f"Bio {i + 1}" for i in range(body.bio_signals)]
-
+    
         started_keys = {bio_key(name) for name in body.bio_species if name}
         completed_keys = {bio_key(name) for name in body.bio_completed_species if name}
-
+    
         for index, name in enumerate(expected):
             key = bio_key(name)
-
-            # Expected genus names such as "Fungoida" should match scanned
-            # species names such as "Fungoida Bullarum".
+    
             done = key in completed_keys
             started = key in started_keys
-
-            # Fallback for placeholder Bio 1 / Bio 2 / Bio 3 when names are unknown.
+    
             if name.startswith("Bio "):
                 done = index < len(body.bio_completed_species)
                 started = index < len(body.bio_species)
-
+    
             if done:
-                label_text = f"✓ {name}"
-                color = "#CBC3E3"      # completed final Analyse / 3-of-3
-                text_color = "#000000"
-            elif started:
-                label_text = f"• {name}"
-                color = "#1F5A32"      # found / sampling started
+                icon = bio_icon_html(name, "#FFFFFF", size=14)
+                label_text = f"{icon}&nbsp;✓ {name}"
+                color = "#7C3AED"
                 text_color = "#FFFFFF"
+            elif started:
+                icon = bio_icon_html(name, "#1A1200", size=14)
+                label_text = f"{icon}&nbsp;• {name}"
+                color = "#D69E2E"
+                text_color = "#000000"
             else:
-                label_text = name
-                color = "#3A3A3A"      # expected but not found yet
+                icon = bio_icon_html(name, "#B7BEC7", size=14)
+                label_text = f"{icon}&nbsp;{name}"
+                color = "#3A3A3A"
                 text_color = "#DDDDDD"
-
+    
             label = QLabel(label_text)
+            label.setTextFormat(Qt.TextFormat.RichText)
             label.setFixedHeight(24)
-            label.setMinimumWidth(80)
+            label.setMinimumWidth(72)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
+    
             label.setStyleSheet(f"""
                 QLabel {{
                     background-color: {color};
                     color: {text_color};
                     border-radius: 5px;
-                    padding: 1px 2px;
+                    padding: 1px 8px;
                 }}
             """)
-
+    
             layout.addWidget(label)
-
+    
         layout.addStretch()
         return container
-
 
     def toggle_opacity(self) -> None:
         self.opacity_enabled = not self.opacity_enabled
@@ -908,6 +1397,8 @@ class OverlayWindow(QWidget):
     def update_search_rules_from_bodies(self, bodies: list[BodyInfo]) -> None:
         search_type = self.search_type_combo.currentText()
         search_item = self.search_item_combo.currentText()
+        search_type = self.clean_search_type()
+        search_item = self.clean_search_item()
 
         if search_type == "None" or search_item == "None":
             self.update_search_rules_label()
@@ -924,18 +1415,13 @@ class OverlayWindow(QWidget):
                 if not best_conditions:
                     best_conditions = result["conditions"]
                 else:
-                    # Merge condition results across all scanned bodies.
                     merged = []
-
                     for index, (name, found) in enumerate(best_conditions):
                         new_found = found
-
                         if index < len(result["conditions"]):
                             _, other_found = result["conditions"][index]
                             new_found = found or other_found
-
                         merged.append((name, new_found))
-
                     best_conditions = merged
 
             if result.get("match_text"):
@@ -949,23 +1435,32 @@ class OverlayWindow(QWidget):
             self.update_search_rules_label()
             return
 
-        title_color = "#22C55E" if confirmed else "#60A5FA"
+        self.search_rules_card.setProperty("confirmed", "true" if confirmed else "false")
+        self.search_rules_card.style().unpolish(self.search_rules_card)
+        self.search_rules_card.style().polish(self.search_rules_card)
+        self.search_rules_card.update()
 
+        title_color = "#22C55E" if confirmed else "#60A5FA"
+        status_word = "FOUND" if confirmed else "SEARCHING"
+
+        found_color = "#22C55E" if confirmed else "#60A5FA"
         condition_text = " &nbsp;&nbsp;&nbsp;&nbsp; ".join(
-            f"<span style='color:{'#22C55E' if found else '#EF4444'};'>●</span> {name}"
+            f"<span style='color:{found_color if found else '#EF4444'};'>●</span> {name}"
             for name, found in best_conditions
         )
 
-        if not best_match_text:
+        if best_match_text:
+            result_line = f"<b>Result:</b> {best_match_text}"
+        else:
             rule = get_rule_description(search_type, search_item)
-            best_match_text = rule.get("match", "")
+            result_line = f"<span style='color:#9FB0BF;'>Watching:</span> {rule.get('match', '')}"
 
         self.search_rules_label.setText(
-            f"<b style='color:{title_color};'>{search_item} conditions:</b><br>"
+            f"<b style='color:{title_color};'>{status_word}: {search_item}</b><br>"
             f"{condition_text}<br>"
-            f"<b>Match when:</b> {best_match_text}"
+            f"{result_line}"
         )
-    
+
     def stat_delta_from_start(self, key: str, current_total: int | None) -> int | None:
         if current_total is None:
             return None
@@ -980,18 +1475,27 @@ class OverlayWindow(QWidget):
     
     
     def stat_chip_text(self, icon: str, key: str, current_total: int | None) -> str:
+        titles = {
+            "systems_visited": "Systems visited",
+            "planets_scanned_level_3": "Planets L3",
+            "efficient_scans": "Efficient DSS",
+        }
+        title = titles.get(key, key)
+
         if current_total is None:
-            return f"{icon} —"
+            return f"<span style='color:#9FB0BF;'>{icon} {title}</span><br><b>—</b>"
     
         delta = self.stat_delta_from_start(key, current_total)
     
         return (
-            f"{icon} {current_total:,} "
-            f"<span style='color:#6CB6FF;'>| +{delta:,}</span>"
+            f"<span style='color:#9FB0BF;'>{icon} {title}</span><br>"
+            f"<b>{current_total:,}</b> "
+            f"<span style='color:#6CB6FF;'>+{delta:,}</span>"
         )
 
     def refresh(self) -> None:
         state = self.monitor.state
+        self.refresh_thin_view()
 
         if state.special_alerts:
             self.special_icon_label.setText("✦")
@@ -999,7 +1503,7 @@ class OverlayWindow(QWidget):
             self.set_alert_style(True)
         else:
             self.special_icon_label.setText("✦")
-            self.special_label.setText("Special: none detected in this system")
+            self.special_label.setText("No special signals")
             self.set_alert_style(False)
 
         system = state.system or "Unknown system"
@@ -1115,15 +1619,19 @@ class OverlayWindow(QWidget):
                 b.name,
             )
 
-        bodies = sorted(
+        all_bodies = sorted(
                 state.bodies.values(),
                 key=body_sort_key,
         )
 
-        self.update_search_rules_from_bodies(bodies)
+        self.update_search_rules_from_bodies(all_bodies)
+        search_type = self.clean_search_type()
+        search_item = self.clean_search_item()
+
+        bodies = [body for body in all_bodies if self.body_passes_filter(body)]
 
         # Resize Bio Progress based on the widest visible bio pill row.
-        self.table.setColumnWidth(8, self.calculate_bio_progress_width(bodies))
+        self.table.setColumnWidth(6, self.calculate_bio_progress_width(bodies))
 
         self.table.setRowCount(len(bodies))
 
@@ -1133,10 +1641,12 @@ class OverlayWindow(QWidget):
             mapped_text = "" if not can_be_dss_mapped or body.mapped is None else ("Yes" if body.mapped else "No")
             priority = self.priority_text(body)
 
-            search_type = self.search_type_combo.currentText()
+            search_type = self.search_type_combo.currentText().replace("⚒ ", "").replace("⚙ ", "")
             search_item = self.search_item_combo.currentText()
             search_result = evaluate_search_target(search_type, search_item, body)
             special_comment = search_result.get("match_text", "")
+
+            notes = self.notes_for_body(body)
 
             values = [
                 "" if body.body_id is None else str(body.body_id),
@@ -1144,12 +1654,9 @@ class OverlayWindow(QWidget):
                 body.kind,
                 body.subtype,
                 "" if body.distance_ls is None else f"{body.distance_ls:.1f}",
-                "" if body.bio_signals is None else str(body.bio_signals),
-                "" if body.geo_signals is None else str(body.geo_signals),
                 mapped_text,
-                body.bio_status,
-                priority,
-                special_comment,
+                "",
+                notes,
             ]
 
             for col, value in enumerate(values):
@@ -1176,12 +1683,12 @@ class OverlayWindow(QWidget):
                 elif body.bio_signals and body.bio_signals > 0:
                     # Do not color the whole row for bio.
                     # Bio status should only affect Bio Status and Priority columns.
-                    if col == 9:
+                    if col == 7:
                         if self.bio_complete(body):
-                            item.setBackground(QBrush(QColor("#CBC3E3")))  # completed bio
+                            item.setBackground(QBrush(QColor("#7C3AED")))  # completed bio
                             item.setForeground(QBrush(QColor("#000000")))
                         else:
-                            item.setBackground(QBrush(QColor("#1F5A32")))  # bio still needs work
+                            item.setBackground(QBrush(QColor("#5C4618")))  # bio still needs work
                             item.setForeground(QBrush(QColor("#FFFFFF")))
 
                 elif body.scanned is False:
@@ -1190,7 +1697,7 @@ class OverlayWindow(QWidget):
 
                 # Make the Mapped cell extra obvious.
                 # Make the DSS cell look like a small status pill.
-                if col == 7 and can_be_dss_mapped:
+                if col == 5 and can_be_dss_mapped:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
                     if high_value and body.mapped is not True:
@@ -1236,10 +1743,10 @@ class OverlayWindow(QWidget):
 
             # Bios Status pill split
             if body.bio_signals and body.bio_signals > 0:
-                self.table.setCellWidget(row, 8, self.make_bio_status_widget(body))
+                self.table.setCellWidget(row, 6, self.make_bio_status_widget(body))
                 self.table.setRowHeight(row, 32)
             else:
-                self.table.removeCellWidget(row, 8)
+                self.table.removeCellWidget(row, 6)
 
         self.systems_visited_stat.setText(
             self.stat_chip_text("🌌", "systems_visited", state.systems_visited)
@@ -1254,7 +1761,9 @@ class OverlayWindow(QWidget):
         )
         
         self.bio_completed_stat.setText(
-            f"🧬 <span style='color:#6CB6FF;'>+{state.session_bio_completed:,}</span>"
+            f"<span style='color:#9FB0BF;'>🧬 Bio completed</span><br>"
+            f"<b>{state.session_bio_completed:,}</b> "
+            f"<span style='color:#6CB6FF;'>+{state.session_bio_completed:,}</span>"
         )
 
         commander = state.commander or "Unknown"

@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from urllib.parse import quote
+
+from PyQt6.QtCore import QStandardPaths
+
+
+# Small monochrome SVG silhouettes for the major Elite Dangerous
+# exobiology genera. The current scan state controls the fill color.
+_SVG_SHAPES: dict[str, str] = {
+    "aleoida": """
+        <path d="M12 21 L10 11 L6 18 L8 9 L3 15 L8 4 L12 12 L16 4 L15 13 L21 8 L16 18 L14 11 Z"/>
+    """,
+    "bacterium": """
+        <ellipse cx="12" cy="12" rx="8" ry="5"/>
+        <circle cx="8" cy="11" r="1.2" fill="#081018"/>
+        <circle cx="13" cy="9.5" r="1.1" fill="#081018"/>
+        <circle cx="16" cy="13" r="1.3" fill="#081018"/>
+    """,
+    "cactoida": """
+        <path d="M10 21 V6 C10 3 14 3 14 6 V10 H17 V7 C17 5 20 5 20 7 V13 C20 15 18 16 14 16 V21 Z
+                 M10 13 H7 V10 C7 8 4 8 4 10 V15 C4 17 6 18 10 18 Z"/>
+    """,
+    "clypeus": """
+        <path d="M12 3 C18 3 21 7 21 11 C21 17 17 21 12 22 C7 21 3 17 3 11 C3 7 6 3 12 3 Z"/>
+        <path d="M7 10 H17 L15 15 H9 Z" fill="#081018"/>
+    """,
+    "codonata": """
+        <path d="M12 21 V12"/>
+        <path d="M12 13 C5 12 4 7 8 4 C11 5 13 8 12 13 Z"/>
+        <path d="M12 13 C19 12 20 7 16 4 C13 5 11 8 12 13 Z"/>
+        <circle cx="12" cy="6" r="2.2"/>
+    """,
+    "concha": """
+        <path d="M3 18 C4 8 8 4 12 4 C16 4 20 8 21 18 Z"/>
+        <path d="M7 18 L8 9 M12 18 V7 M17 18 L16 9" fill="none"
+              stroke="#081018" stroke-width="1.5"/>
+    """,
+    "electricae": """
+        <path d="M13 2 L6 13 H11 L9 22 L18 10 H13 Z"/>
+    """,
+    "fonticulua": """
+        <path d="M12 21 V11 M12 13 L6 8 M12 15 L18 9 M12 10 L9 5 M12 11 L15 4
+                 M6 8 L4 5 M6 8 L3 10 M18 9 L21 6 M18 9 L21 11"
+              fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    """,
+    "frutexa": """
+        <path d="M12 21 V10 M12 12 L7 8 M12 14 L17 9 M7 8 L5 5 M7 8 L4 10
+                 M17 9 L19 5 M17 9 L21 11" fill="none"
+              stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/>
+        <circle cx="4" cy="10" r="2"/><circle cx="21" cy="11" r="2"/>
+    """,
+    "fungoida": """
+        <path d="M4 11 C5 5 9 3 12 3 C16 3 20 6 20 11 Z"/>
+        <rect x="10" y="10" width="4" height="10" rx="1"/>
+        <path d="M7 20 H17" fill="none" stroke="currentColor" stroke-width="2"/>
+    """,
+    "osseus": """
+        <path d="M12 21 V5 M12 9 L7 6 M12 12 L17 8 M12 15 L7 13
+                 M12 18 L17 15" fill="none"
+              stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    """,
+    "recepta": """
+        <path d="M5 5 H19 L16 13 H8 Z"/>
+        <path d="M10 13 V20 H14 V13 Z"/>
+        <circle cx="12" cy="7" r="2" fill="#081018"/>
+    """,
+    "stratum": """
+        <path d="M3 18 C5 13 8 11 12 11 C16 11 19 13 21 18 Z"/>
+        <path d="M5 14 C7 9 10 7 12 7 C15 7 18 9 19 14 Z"/>
+        <path d="M8 9 C9 5 11 3 12 3 C14 3 16 5 17 9 Z"/>
+    """,
+    "tubus": """
+        <rect x="4" y="8" width="4" height="12" rx="2"/>
+        <rect x="10" y="4" width="4" height="16" rx="2"/>
+        <rect x="16" y="7" width="4" height="13" rx="2"/>
+        <ellipse cx="6" cy="8" rx="2" ry="1" fill="#081018"/>
+        <ellipse cx="12" cy="4" rx="2" ry="1" fill="#081018"/>
+        <ellipse cx="18" cy="7" rx="2" ry="1" fill="#081018"/>
+    """,
+    "tussock": """
+        <path d="M12 21 L4 7 M12 21 L8 4 M12 21 L12 3 M12 21 L16 4 M12 21 L20 7"
+              fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    """,
+}
+
+_GENERIC_SHAPE = """
+    <circle cx="12" cy="12" r="8"/>
+    <path d="M8 12 H16 M12 8 V16" fill="none" stroke="#081018" stroke-width="2"/>
+"""
+
+
+def genus_key(name: str) -> str:
+    lowered = (name or "").lower()
+    for genus in _SVG_SHAPES:
+        if genus in lowered:
+            return genus
+    return "generic"
+
+
+def _cache_dir() -> Path:
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.CacheLocation
+    )
+    path = Path(base or Path.home() / ".cache") / "bio-icons"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def bio_icon_path(name: str, color: str, size: int = 16) -> Path:
+    genus = genus_key(name)
+    shape = _SVG_SHAPES.get(genus, _GENERIC_SHAPE)
+    safe_color = color if color.startswith("#") else "#707780"
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg"
+        width="{size}" height="{size}" viewBox="0 0 24 24">
+        <g color="{safe_color}" fill="{safe_color}">
+            {shape}
+        </g>
+    </svg>"""
+
+    digest = hashlib.sha1(
+        f"{genus}|{safe_color}|{size}|{svg}".encode("utf-8")
+    ).hexdigest()[:16]
+    path = _cache_dir() / f"{genus}-{digest}.svg"
+
+    if not path.exists():
+        path.write_text(svg, encoding="utf-8")
+
+    return path
+
+
+def bio_icon_html(name: str, color: str, size: int = 16) -> str:
+    path = bio_icon_path(name, color, size)
+    tooltip = quote(name or "Unknown biological type")
+    return (
+        f"<img src='{path.as_uri()}' width='{size}' height='{size}' "
+        f"title='{tooltip}'/>"
+    )

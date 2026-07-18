@@ -1,22 +1,5 @@
-QComboBox#searchCombo {
-    background-color: #0B1117;
-    color: #E6EDF3;
-    border: 1px solid #2A3A48;
-    border-radius: 8px;
-    padding: 6px 10px;
-    min-width: 130px;
-}
-
-QComboBox#searchCombo:hover {
-    border: 1px solid #3A4A58;
-}
-
-QComboBox#searchCombo:disabled {
-    color: #6B7280;
-}
-
 QWidget {
-    background-color: #0F1720;
+    background-color: #0B1117;
     color: #E6EDF3;
     font-size: 13px;
 }
@@ -28,10 +11,49 @@ QLabel {
     padding: 2px;
 }
 
+QComboBox#searchCombo {
+    background-color: #0B1117;
+    color: #E6EDF3;
+    border: 1px solid #2A3A48;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 130px;
+}
+
+QComboBox#searchCombo:hover {
+    border: 1px solid #4B6B88;
+}
+
+QComboBox#searchCombo:disabled {
+    color: #6B7280;
+}
+
+QComboBox#searchCombo QAbstractItemView {
+    background-color: #0B1117;
+    color: #E6EDF3;
+    border: 1px solid #2A3A48;
+    selection-background-color: #17324A;
+    selection-color: #FFFFFF;
+}
+
 QLabel#specialText {
     background-color: transparent;
-    color: #E6EDF3;
-    font-size: 15px;
+    color: #9FB0BF;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QLabel#specialIcon {
+    background-color: transparent;
+    color: #64748B;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+QLabel#specialIcon[alert="true"] {
+    background-color: transparent;
+    color: #FFD700;
+    font-size: 20px;
     font-weight: bold;
 }
 
@@ -39,7 +61,33 @@ QLabel#searchRulesLabel {
     background-color: transparent;
     color: #C7D0D9;
     font-size: 12px;
-    padding: 2px 6px;
+    padding: 0px;
+}
+
+QLabel#searchCardTitle {
+    background-color: transparent;
+    color: #C7D0D9;
+    font-size: 13px;
+    padding: 2px 4px;
+}
+
+QLabel#searchSelectIcon {
+    background-color: rgba(23, 50, 74, 180);
+    color: #60A5FA;
+    border: 1px solid #2A3A48;
+    border-radius: 8px;
+    min-width: 24px;
+    min-height: 24px;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 2px;
+}
+
+QFrame#routeSeparator {
+    background-color: #2A3A48;
+    border: none;
+    margin-top: 12px;
+    margin-bottom: 12px;
 }
 
 QLabel#footerLabel {
@@ -65,11 +113,12 @@ QLabel#sectionTitle {
     margin: 0px;
 }
 
-QLabel#legendLabel {
+QLabel#tableTitle {
     background-color: transparent;
-    color: #C7D0D9;
-    font-size: 12px;
-    padding: 4px;
+    color: #E6EDF3;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 2px 6px;
 }
 
 QLabel#cardIcon {
@@ -93,63 +142,63 @@ QLabel#cardValue {
     font-weight: bold;
 }
 
-QLabel#specialIcon {
+QFrame#infoCard {
     background-color: transparent;
-    color: #F59E0B;
-    font-size: 20px;
-    font-weight: bold;
-}
-
-QLabel#specialIcon[alert="true"] {
-    background-color: transparent;
-    color: #FFD700;
-    font-size: 20px;
-    font-weight: bold;
-}
-
-QTableWidget {
-    background-color: #111A22;
-    alternate-background-color: #13202A;
-    color: #E6EDF3;
-    gridline-color: #243342;
-    selection-background-color: #27445C;
-    border: none; /* 1px solid #2A3A48; */
-    border-radius: 15px;
-}
-
-QTableWidget::viewport {
-    background-color: #111A22;
+    border: none;
     border-radius: 8px;
 }
 
-QHeaderView::section {
-    background-color: #1E2B36;
-    color: #DCE6EE;
-    padding: 6px;
-    border: none;
-    border-right: 1px solid #2A3A48;
-}
-
-QTableCornerButton::section {
-    background-color: #1E2B36;
-    border: none;
-    border-top-left-radius: 8px;
-}
-
-QHeaderView::section {
-    background-color: #1E2B36;
-    color: #DCE6EE;
-    padding: 6px;
-    border: none;
-    border-right: 1px solid #2A3A48;
-}
-
-QTextEdit {
-    background-color: #0B1117;
-    color: #A7FF83;
+QFrame#wideCard,
+QFrame#commanderStatsCard,
+QFrame#searchSelectCard,
+QFrame#searchRulesCard {
+    background-color: rgba(18, 28, 38, 230);
     border: 1px solid #2A3A48;
-    border-radius: 10px;
-    padding: 6px;
+    border-radius: 12px;
+}
+
+QFrame#searchRulesCard[confirmed="true"] {
+    background-color: rgba(10, 55, 34, 210);
+    border: 1px solid #1F9D55;
+}
+
+QFrame#specialCard {
+    background-color: rgba(9, 15, 22, 160);
+    border: 1px solid #243342;
+    border-radius: 12px;
+}
+
+QFrame#specialCard[alert="true"] {
+    background-color: #4A102A;
+    border: 1px solid #8A3A5A;
+    border-radius: 12px;
+}
+
+QFrame#specialMessageCard {
+    background-color: rgba(11, 17, 23, 170);
+    border: 1px solid #243342;
+    border-radius: 12px;
+}
+
+QFrame#tableCard {
+    background-color: rgba(17, 26, 34, 230);
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
+}
+
+QFrame#bottomCard {
+    background-color: rgba(22, 32, 42, 220);
+    border: 1px solid #2A3A48;
+    border-radius: 12px;
+}
+
+QLabel#commanderStatChip {
+    background-color: rgba(11, 17, 23, 210);
+    color: #E6EDF3;
+    border: 1px solid #213142;
+    border-radius: 8px;
+    padding: 0px 0px;
+    font-size: 11px;
 }
 
 QPushButton#opacityButton {
@@ -166,92 +215,98 @@ QPushButton#opacityButton:hover {
     background-color: #2A3A48;
 }
 
-QFrame#infoCard {
-    background-color: transparent;
-    border: none;
-    border-radius: 8px;
-}
-
-QFrame#commanderStatsCard {
-    background-color: #121C26;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QFrame#specialCard {
-    background-color: #16202A;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QFrame#specialMessageCard {
-    background-color: transparent;
-    border: none;
-}
-
-QFrame#searchSelectCard {
-    background-color: #121C26;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QFrame#searchRulesCard {
-    background-color: #121C26;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QFrame#tableCard {
-    background-color: #111A22;
-    border: 1px solid #2A3A48;
-    border-radius: 10px;
-}
-
-QLabel#commanderStatChip {
+QPushButton#tableFilterButton {
     background-color: #0B1117;
-    color: #E6EDF3;
+    color: #C7D0D9;
     border: 1px solid #2A3A48;
     border-radius: 8px;
-    padding: 4px 8px;
+    padding: 3px 10px;
     font-size: 12px;
     font-weight: bold;
 }
 
-QLabel#commanderStatChip:hover {
-    background-color: #172433;
+QPushButton#tableFilterButton:hover {
     border: 1px solid #4B6B88;
     color: #FFFFFF;
 }
 
-QLabel#searchCardTitle {
-    background-color: transparent;
-    color: #C7D0D9;
-    font-size: 13px;
-    padding: 2px 4px;
+QPushButton#tableFilterButton[active="true"] {
+    background-color: #17324A;
+    color: #FFFFFF;
+    border: 1px solid #60A5FA;
 }
 
-QLabel#searchRulesLabel {
-    background-color: transparent;
+QTableWidget {
+    background-color: #111A22;
+    alternate-background-color: #13202A;
+    color: #E6EDF3;
+    gridline-color: #243342;
+    selection-background-color: #27445C;
+    border: none;
+    border-radius: 12px;
+}
+
+QTableWidget::viewport {
+    background-color: #111A22;
+    border-radius: 8px;
+}
+
+QTableWidget::item {
+    padding: 3px;
+}
+
+QHeaderView::section {
+    background-color: #1E2B36;
+    color: #DCE6EE;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #2A3A48;
+}
+
+QTableCornerButton::section {
+    background-color: #1E2B36;
+    border: none;
+    border-top-left-radius: 8px;
+}
+
+QTextEdit {
+    background-color: #0B1117;
+    color: #A7FF83;
+    border: 1px solid #2A3A48;
+    border-radius: 10px;
+    padding: 6px;
+}
+
+QFrame#thinCard {
+    background-color: rgba(12, 20, 28, 245);
+    border: 1px solid #2A3A48;
+    border-radius: 8px;
+}
+
+QLabel#thinSystem {
+    color: #E6EDF3;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 0px 4px;
+}
+
+QLabel#thinStatus {
     color: #C7D0D9;
-    font-size: 12px;
+    font-size: 13px;
+    padding: 0px 4px;
+}
+
+QPushButton#modeToggleButton {
+    background-color: #17232D;
+    color: #9FB0BF;
+    border: 1px solid #344554;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
     padding: 0px;
 }
 
-QFrame#wideCard {
-    background-color: #121C26;
-    border: 1px solid #2A3A48;
-    border-radius: 12px;
+QPushButton#modeToggleButton:hover {
+    background-color: #253746;
+    color: #FFFFFF;
 }
-
-QFrame#bottomCard {
-    background-color: #16202A;
-    border: 1px solid #2A3A48;
-    border-radius: 12px;
-}
-
-QFrame#specialCard[alert="true"] {
-    background-color: #4A102A;
-    border: 1px solid #8A3A5A;
-    border-radius: 10px;
-}
-
