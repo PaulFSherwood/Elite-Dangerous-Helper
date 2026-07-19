@@ -86,9 +86,37 @@ _SVG_SHAPES: dict[str, str] = {
         <circle cx="12" cy="7" r="2" fill="#081018"/>
     """,
     "stratum": """
-        <path d="M3 18 C5 13 8 11 12 11 C16 11 19 13 21 18 Z"/>
-        <path d="M5 14 C7 9 10 7 12 7 C15 7 18 9 19 14 Z"/>
-        <path d="M8 9 C9 5 11 3 12 3 C14 3 16 5 17 9 Z"/>
+        <!-- Low rocky outcrop -->
+        <path d="
+            M2 19
+            C4 16 5 13 8 12
+            C10 8 14 7 16 11
+            C19 12 21 15 22 19
+            Z
+        "/>
+    
+        <!-- Uneven ridge line -->
+        <path d="
+            M3 18
+            C5 16 6 14 8 14
+            C10 11 12 10 14 11
+            C16 10 18 12 20 16
+        "
+        fill="none"
+        stroke="#081018"
+        stroke-width="1.4"
+        stroke-linecap="round"/>
+    
+        <!-- Surface grooves -->
+        <path d="
+            M6 17 C8 15 9 14 11 13
+            M10 18 C12 16 14 15 16 14
+            M15 18 C17 16 18 16 20 17
+        "
+        fill="none"
+        stroke="#081018"
+        stroke-width="1.1"
+        stroke-linecap="round"/>
     """,
     "tubus": """
         <rect x="4" y="8" width="4" height="12" rx="2"/>
