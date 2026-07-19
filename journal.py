@@ -622,7 +622,7 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         state.docked = False
         changed = True
 
-    elif name == "SellExplorationData":
+    elif name in ("SellExplorationData", "MultiSellExplorationData"):
         if state.live_updates_enabled:
             sold_count = len(state.held_exploration_systems)
             state.held_exploration_systems.clear()
@@ -743,6 +743,7 @@ class JournalMonitor(QObject):
                         "Scan",
                         "ScanOrganic",
                         "SellExplorationData",
+                        "MultiSellExplorationData",
                         "SellOrganicData",
                     }:
                         save_held_data(self.state, self.settings)
