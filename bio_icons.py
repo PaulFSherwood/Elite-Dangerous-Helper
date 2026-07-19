@@ -35,9 +35,20 @@ _SVG_SHAPES: dict[str, str] = {
         <circle cx="12" cy="6" r="2.2"/>
     """,
     "concha": """
-        <path d="M3 18 C4 8 8 4 12 4 C16 4 20 8 21 18 Z"/>
-        <path d="M7 18 L8 9 M12 18 V7 M17 18 L16 9" fill="none"
-              stroke="#081018" stroke-width="1.5"/>
+        <path d="M12 21
+                 C9 18 4 15 4 10
+                 C4 6 8 4 12 8
+                 C16 4 20 6 20 10
+                 C20 15 15 18 12 21 Z"/>
+        <path d="M12 8 V5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"/>
+        <circle cx="12" cy="4" r="2.5"/>
+        <path d="M12 1.5 V6.5 M9.5 4 H14.5 M10.2 2.2 L13.8 5.8 M13.8 2.2 L10.2 5.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1"/>
     """,
     "electricae": """
         <path d="M13 2 L6 13 H11 L9 22 L18 10 H13 Z"/>
@@ -55,9 +66,14 @@ _SVG_SHAPES: dict[str, str] = {
         <circle cx="4" cy="10" r="2"/><circle cx="21" cy="11" r="2"/>
     """,
     "fungoida": """
-        <path d="M4 11 C5 5 9 3 12 3 C16 3 20 6 20 11 Z"/>
-        <rect x="10" y="10" width="4" height="10" rx="1"/>
-        <path d="M7 20 H17" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M6 21 V8 M12 21 V5 M18 21 V10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"/>
+        <circle cx="6" cy="7" r="2.5"/>
+        <circle cx="12" cy="4" r="2.5"/>
+        <circle cx="18" cy="9" r="2.5"/>
     """,
     "osseus": """
         <path d="M12 21 V5 M12 9 L7 6 M12 12 L17 8 M12 15 L7 13
@@ -83,8 +99,43 @@ _SVG_SHAPES: dict[str, str] = {
         <ellipse cx="18" cy="7" rx="2" ry="1" fill="#081018"/>
     """,
     "tussock": """
-        <path d="M12 21 L4 7 M12 21 L8 4 M12 21 L12 3 M12 21 L16 4 M12 21 L20 7"
-              fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- Dense rounded grass mound -->
+        <path d="
+            M3 20
+            C4 15 6 12 9 11
+            C10 9 14 9 15 11
+            C18 12 20 15 21 20
+            Z
+        "/>
+    
+        <!-- Hanging grass strands -->
+        <path d="
+            M6 14 L4 21
+            M8 13 L7 22
+            M10 12 L10 22
+            M12 12 L12 22
+            M14 12 L14 22
+            M16 13 L17 22
+            M18 14 L20 21
+        "
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"/>
+    
+        <!-- Main flower spike -->
+        <path d="
+            M12 12
+            C11 9 11 5 13 2
+            C16 5 16 9 14 12
+            Z
+        "/>
+    
+        <!-- Texture dots on the spike -->
+        <circle cx="13" cy="4" r="0.8" fill="#081018"/>
+        <circle cx="14" cy="6" r="0.8" fill="#081018"/>
+        <circle cx="13" cy="8" r="0.8" fill="#081018"/>
+        <circle cx="14" cy="10" r="0.8" fill="#081018"/>
     """,
 }
 
