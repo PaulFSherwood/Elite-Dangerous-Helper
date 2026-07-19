@@ -1,13 +1,14 @@
 # Elite Journal Helper
 
-A small Linux-native helper for **Elite Dangerous** exploration. 
+A Linux-native **Elite Dangerous** exploration helper with a full dashboard and a compact Thin Mode designed to sit at the bottom of your screen.
+
+ **toggle see through mode available**
+
+
 <img title="" src="assets\ScreenShot6.png" alt="image" width="860" height="425">
+<img title="" src="assets\ScreenShot11.png" alt="image" width="860" height="425">
 
-Mini:
-
-![ScreenShot-mini-2.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/ScreenShot-mini-2.png)
-
-
+<img src="assets/Mini-01.png" alt="Thin Mode preview" width="860">
 
 The app watches Elite Dangerous journal logs, updates live as the game writes new events, and shows an always-on-top PyQt6 window with system, body, DSS, exobiology, and special-signal information.
 
@@ -181,24 +182,44 @@ assets/               icons and ship images
 
 Use the small mode button in the lower-right corner of the full dashboard to enter Thin Mode.
 
-### Thin Mode Screenshots
+### Thin Mode Progression
 
-Place your mini-mode screenshots in `assets/` and replace the filenames below when ready.
+The screenshots below show Thin Mode progressing from system discovery through target identification and biological completion.
+Pre-Honk
+<img src="assets/Mini-01.png" alt="Thin Mode progression step 1 of 13" width="100%">
+After Honk Proper number of planets shown
+<img src="assets/Mini-02.png" alt="Thin Mode progression step 2 of 13" width="100%">
+FSS scan planets get brigter
+<img src="assets/Mini-03.png" alt="Thin Mode progression step 3 of 13" width="100%">
+Scan complete any planets that require a detail scan and potention plants shown.
+<img src="assets/Mini-04.png" alt="Thin Mode progression step 4 of 13" width="100%">
+After detail scan icon for plant types shown
+<img src="assets/Mini-05.png" alt="Thin Mode progression step 5 of 13" width="100%">
 
-![Observatory-mini-PlanetScan-Started.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/Observatory-mini-PlanetScan-Started.png)
+Plant scanning progress
+<img src="assets/Mini-06.png" alt="Thin Mode progression step 6 of 13" width="100%">
 
-![Observatory-mini-PlanetScan-Complete.png](/home/sherwood/Documents/src/projects/Elite-Dangerous-Helper/assets/Observatory-mini-PlanetScan-Complete.png)
+<img src="assets/Mini-07.png" alt="Thin Mode progression step 7 of 13" width="100%">
 
+<img src="assets/Mini-08.png" alt="Thin Mode progression step 8 of 13" width="100%">
 
+<img src="assets/Mini-09.png" alt="Thin Mode progression step 9 of 13" width="100%">
 
-Suggested image order:
+<img src="assets/Mini-10.png" alt="Thin Mode progression step 10 of 13" width="100%">
+All plants for a plant have been scan and removed, updated Target count.
+<img src="assets/Mini-11.png" alt="Thin Mode progression step 11 of 13" width="100%">
 
-```text
-1. FSS progress after honking
-2. Target planets identified
-3. One biological sample started
-4. Biological progress or completed target
-```
+<img src="assets/Mini-12.png" alt="Thin Mode progression step 12 of 13" width="100%">
+
+<img src="assets/Mini-13.png" alt="Thin Mode progression step 13 of 13" width="100%">
+Second planet complet, Target count updated.
+<img src="assets/Mini-14.png" alt="Thin Mode progression step 13 of 13" width="100%">
+
+<img src="assets/Mini-15.png" alt="Thin Mode progression step 13 of 13" width="100%">
+Third planet complete
+<img src="assets/Mini-16.png" alt="Thin Mode progression step 13 of 13" width="100%">
+All planets complete
+<img src="assets/Mini-17.png" alt="Thin Mode progression step 13 of 13" width="100%">
 
 Thin Mode is designed to sit above a narrow monitor such as ThinMon. It removes the desktop title bar and presents only current exploration work:
 

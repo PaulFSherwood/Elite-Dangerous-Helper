@@ -24,8 +24,9 @@ _SVG_SHAPES: dict[str, str] = {
                  M10 13 H7 V10 C7 8 4 8 4 10 V15 C4 17 6 18 10 18 Z"/>
     """,
     "clypeus": """
-        <path d="M12 3 C18 3 21 7 21 11 C21 17 17 21 12 22 C7 21 3 17 3 11 C3 7 6 3 12 3 Z"/>
-        <path d="M7 10 H17 L15 15 H9 Z" fill="#081018"/>
+        <path d="M4 17 C5 9 8 5 12 5 C16 5 19 9 20 17 C17 15 15 14 12 14 C9 14 7 15 4 17 Z"/>
+        <path d="M5 18 C8 15 10 14 12 14 C14 14 17 15 19 18 C16 20 8 20 5 18 Z"/>
+        <path d="M12 6 V14" fill="none" stroke="#081018" stroke-width="1.5"/>
     """,
     "codonata": """
         <path d="M12 21 V12"/>
