@@ -9,3 +9,11 @@ Journal*.log
 *.pem
 id_rsa
 id_ed25519
+__pycache__/
+*.py[cod]
+*.sqlite
+*.sqlite3
+.venv/
+venv/
+build/
+dist/
