@@ -9,7 +9,13 @@ from typing import Optional
 
 from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
-from state import BodyInfo, CommanderState, cache_current_system, restore_cached_system
+from state import (
+    BodyInfo,
+    CommanderState,
+    cache_current_system,
+    restore_cached_system,
+    system_cache_keys,
+)
 from rules import (
     add_unique,
     looks_like_suit,
@@ -39,6 +45,8 @@ DEFAULT_JOURNAL_CANDIDATES = [
 
 HELD_EXPLORATION_KEY = "held_data/exploration_systems"
 HELD_BIO_KEY = "held_data/bio_samples"
+FSS_COMPLETED_KEY = "fss/completed_systems"
+FSS_INDEXED_FILES_KEY = "fss/indexed_files"
 
 
 def _settings_string_set(settings: QSettings, key: str) -> set[str]:
@@ -86,6 +94,189 @@ def exploration_system_key(state: CommanderState) -> Optional[str]:
         return f"name:{state.system.lower()}"
 
     return None
+
+
+
+def _settings_json_dict(settings: QSettings, key: str) -> dict:
+    raw = settings.value(key, "{}")
+
+    try:
+        value = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+    return value if isinstance(value, dict) else {}
+
+
+def load_fss_data(state: CommanderState, settings: QSettings) -> None:
+    raw = _settings_json_dict(settings, FSS_COMPLETED_KEY)
+    completed: dict[str, Optional[int]] = {}
+
+    for key, count in raw.items():
+        if not isinstance(key, str) or not key:
+            continue
+
+        if count is None:
+            completed[key] = None
+            continue
+
+        try:
+            completed[key] = int(count)
+        except (TypeError, ValueError):
+            completed[key] = None
+
+    state.fss_completed_systems = completed
+
+
+def save_fss_data(state: CommanderState, settings: QSettings) -> None:
+    settings.setValue(
+        FSS_COMPLETED_KEY,
+        json.dumps(state.fss_completed_systems, sort_keys=True),
+    )
+    settings.sync()
+
+
+def _as_float(value) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def mark_fss_complete(
+    state: CommanderState,
+    system: Optional[str],
+    address: Optional[int],
+    count: Optional[int],
+) -> None:
+    keys = system_cache_keys(system, address)
+
+    if not keys:
+        return
+
+    body_count: Optional[int]
+    try:
+        body_count = int(count) if count is not None else None
+    except (TypeError, ValueError):
+        body_count = None
+
+    for key in keys:
+        old_count = state.fss_completed_systems.get(key)
+        if body_count is not None or key not in state.fss_completed_systems:
+            state.fss_completed_systems[key] = body_count if body_count is not None else old_count
+
+    current_keys = set(system_cache_keys(state.system, state.system_address))
+    if current_keys.intersection(keys):
+        state.fss_complete = True
+        state.fss_progress = 1.0
+        if state.body_count is None and body_count is not None:
+            state.body_count = body_count
+
+
+def _scan_fss_history_file(state: CommanderState, journal_path: Path) -> int:
+    current_system: Optional[str] = None
+    current_address: Optional[int] = None
+    completions_before = len(state.fss_completed_systems)
+
+    interesting_names = (
+        "Location",
+        "FSDJump",
+        "CarrierJump",
+        "FSSDiscoveryScan",
+        "FSSAllBodiesFound",
+    )
+
+    with journal_path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not any(name in line for name in interesting_names):
+                continue
+
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            event_name = event.get("event")
+
+            if event_name in ("Location", "FSDJump", "CarrierJump"):
+                current_system = event.get("StarSystem") or current_system
+                current_address = event.get("SystemAddress", current_address)
+                continue
+
+            system = (
+                event.get("SystemName")
+                or event.get("StarSystem")
+                or current_system
+            )
+            address = event.get("SystemAddress", current_address)
+
+            if event_name == "FSSAllBodiesFound":
+                mark_fss_complete(
+                    state,
+                    system,
+                    address,
+                    event.get("Count"),
+                )
+                continue
+
+            if event_name == "FSSDiscoveryScan":
+                progress = _as_float(event.get("Progress"))
+                if progress is not None and progress >= 0.999999:
+                    mark_fss_complete(
+                        state,
+                        system,
+                        address,
+                        event.get("BodyCount"),
+                    )
+
+    return len(state.fss_completed_systems) - completions_before
+
+
+def index_fss_history(
+    state: CommanderState,
+    settings: QSettings,
+    journal_dir: Path,
+) -> tuple[int, int]:
+    indexed_files = _settings_json_dict(settings, FSS_INDEXED_FILES_KEY)
+    files_scanned = 0
+    completion_keys_added = 0
+
+    journals = sorted(
+        journal_dir.glob("Journal*.log"),
+        key=lambda p: p.stat().st_mtime,
+    )
+
+    for journal_path in journals:
+        try:
+            stat = journal_path.stat()
+        except OSError:
+            continue
+
+        signature = f"{stat.st_size}:{stat.st_mtime_ns}"
+        if indexed_files.get(journal_path.name) == signature:
+            continue
+
+        try:
+            completion_keys_added += _scan_fss_history_file(state, journal_path)
+        except OSError:
+            continue
+
+        indexed_files[journal_path.name] = signature
+        files_scanned += 1
+
+    if files_scanned:
+        settings.setValue(
+            FSS_INDEXED_FILES_KEY,
+            json.dumps(indexed_files, sort_keys=True),
+        )
+        settings.setValue(
+            FSS_COMPLETED_KEY,
+            json.dumps(state.fss_completed_systems, sort_keys=True),
+        )
+        settings.sync()
+
+    return files_scanned, completion_keys_added
+
 
 def resolve_journal_dir(user_path: Optional[str]) -> Path:
     if user_path:
@@ -308,16 +499,37 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         state.body_count = event.get("BodyCount", state.body_count)
         state.non_body_count = event.get("NonBodyCount", state.non_body_count)
 
+        progress = _as_float(event.get("Progress"))
+        if progress is not None:
+            state.fss_progress = progress
+
+        if progress is not None and progress >= 0.999999:
+            mark_fss_complete(
+                state,
+                event.get("SystemName") or event.get("StarSystem") or state.system,
+                event.get("SystemAddress", state.system_address),
+                state.body_count,
+            )
+
         if state.live_updates_enabled:
             system_key = exploration_system_key(state)
             if system_key:
                 state.held_exploration_systems.add(system_key)
 
-        state.log(f"Honk complete: {state.body_count} bodies detected")
+        if state.fss_complete:
+            state.log(f"FSS complete: {state.body_count} bodies")
+        else:
+            state.log(f"Honk complete: {state.body_count} bodies detected")
         changed = True
 
     elif name == "FSSAllBodiesFound":
         state.body_count = event.get("Count", state.body_count)
+        mark_fss_complete(
+            state,
+            event.get("SystemName") or event.get("StarSystem") or state.system,
+            event.get("SystemAddress", state.system_address),
+            state.body_count,
+        )
         state.log("All bodies found by FSS")
         changed = True
 
@@ -657,6 +869,7 @@ class JournalMonitor(QObject):
         self.settings = QSettings("GrrWooD", "EliteDangerousObservatory")
         self.state = CommanderState()
         load_held_data(self.state, self.settings)
+        load_fss_data(self.state, self.settings)
         # self.db = connect_db()
         # init_db(self.db)
         self.current_file: Optional[Path] = None
@@ -675,6 +888,17 @@ class JournalMonitor(QObject):
             key=lambda p: p.stat().st_mtime
         )
 
+        files_indexed, completion_keys_added = index_fss_history(
+            self.state,
+            self.settings,
+            self.journal_dir,
+        )
+        if files_indexed:
+            self.state.log(
+                f"FSS history indexed: {files_indexed} files, "
+                f"{completion_keys_added} completion keys added"
+            )
+
         journals_to_read = journals[-self.history_files:]
 
         for journal_path in journals_to_read:
@@ -690,6 +914,7 @@ class JournalMonitor(QObject):
                     #     save_first_footfall(self.db, self.state, event)
 
         cache_current_system(self.state)
+        save_fss_data(self.state, self.settings)
         # save_state_snapshot(self.db, self.state)
 
         self.position = self.current_file.stat().st_size
@@ -747,6 +972,12 @@ class JournalMonitor(QObject):
                         "SellOrganicData",
                     }:
                         save_held_data(self.state, self.settings)
+
+                    if event.get("event") in {
+                        "FSSDiscoveryScan",
+                        "FSSAllBodiesFound",
+                    }:
+                        save_fss_data(self.state, self.settings)
 
                     # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
                     #     save_first_footfall(self.db, self.state, event)

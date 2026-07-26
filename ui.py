@@ -46,7 +46,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v2.6.2"
+VERSION = "v2.6.3"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -1138,10 +1138,20 @@ class OverlayWindow(QWidget):
         ]
         total = state.body_count
 
+        journal_fss_complete = bool(
+            state.fss_complete
+            or (
+                state.fss_progress is not None
+                and state.fss_progress >= 0.999999
+            )
+        )
         scan_complete = bool(
-            total is not None
-            and total > 0
-            and len(scanned) >= total
+            journal_fss_complete
+            or (
+                total is not None
+                and total > 0
+                and len(scanned) >= total
+            )
         )
 
         if not scan_complete:
@@ -1196,11 +1206,22 @@ class OverlayWindow(QWidget):
         total_targets = len(self.thin_known_targets)
 
         if total_targets == 0:
-            self.thin_status_label.setText(
-                "<b style='color:#22C55E;'>COMPLETE</b>"
-                "&nbsp;&nbsp;│&nbsp;&nbsp;"
-                "<span style='color:#9FB0BF;'>No scan targets</span>"
-            )
+            # On a return visit Elite may confirm 100% FSS completion without
+            # replaying all of the old per-body Scan events. Do not fall back
+            # to a misleading FSS 3/20 display or claim there are definitely
+            # no targets when only part of the body detail is loaded.
+            if journal_fss_complete and total is not None and len(scanned) < total:
+                self.thin_status_label.setText(
+                    "<b style='color:#22C55E;'>FSS COMPLETE</b>"
+                    "&nbsp;&nbsp;│&nbsp;&nbsp;"
+                    f"<span style='color:#9FB0BF;'>Details {len(scanned)}/{total} loaded</span>"
+                )
+            else:
+                self.thin_status_label.setText(
+                    "<b style='color:#22C55E;'>COMPLETE</b>"
+                    "&nbsp;&nbsp;│&nbsp;&nbsp;"
+                    "<span style='color:#9FB0BF;'>No scan targets</span>"
+                )
             return
 
         if completed >= total_targets:

@@ -59,6 +59,17 @@ class CommanderState:
     non_body_count: Optional[int] = None
     bodies: dict[str, BodyInfo] = field(default_factory=dict)
 
+    # FSS completion is separate from the number of Scan events loaded for the
+    # current visit. Elite can report a system as 100% complete even when it
+    # does not replay every old Scan event after returning to the system.
+    fss_progress: Optional[float] = None
+    fss_complete: bool = False
+    system_fss_cache: dict[str, tuple[Optional[float], bool]] = field(default_factory=dict)
+
+    # Persistent journal-history index. Keys are addr:<SystemAddress> and, when
+    # available, name:<lowercase system name>. Values are the known body count.
+    fss_completed_systems: dict[str, Optional[int]] = field(default_factory=dict)
+
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -88,14 +99,21 @@ class CommanderState:
         self.messages.append(msg)
         self.messages = self.messages[-12:]
 
-def system_cache_key(system: Optional[str], address: Optional[int]) -> Optional[str]:
+def system_cache_keys(system: Optional[str], address: Optional[int]) -> list[str]:
+    keys: list[str] = []
+
     if address is not None:
-        return f"addr:{address}"
+        keys.append(f"addr:{address}")
 
     if system:
-        return f"name:{system.lower()}"
+        keys.append(f"name:{system.lower()}")
 
-    return None
+    return keys
+
+
+def system_cache_key(system: Optional[str], address: Optional[int]) -> Optional[str]:
+    keys = system_cache_keys(system, address)
+    return keys[0] if keys else None
 
 
 def cache_current_system(state: CommanderState) -> None:
@@ -108,6 +126,7 @@ def cache_current_system(state: CommanderState) -> None:
         state.system_body_cache[key] = copy.deepcopy(state.bodies)
 
     state.system_count_cache[key] = (state.body_count, state.non_body_count)
+    state.system_fss_cache[key] = (state.fss_progress, state.fss_complete)
 
 
 def restore_cached_system(state: CommanderState) -> None:
@@ -124,3 +143,28 @@ def restore_cached_system(state: CommanderState) -> None:
 
     if key in state.system_count_cache:
         state.body_count, state.non_body_count = state.system_count_cache[key]
+    else:
+        state.body_count = None
+        state.non_body_count = None
+
+    if key in state.system_fss_cache:
+        state.fss_progress, state.fss_complete = state.system_fss_cache[key]
+    else:
+        state.fss_progress = None
+        state.fss_complete = False
+
+    # A completed-system record can come from a much older journal file than
+    # the normal body-history window. Prefer the address key, but also accept
+    # the name key for older events that did not include an address.
+    for completed_key in system_cache_keys(state.system, state.system_address):
+        if completed_key not in state.fss_completed_systems:
+            continue
+
+        state.fss_complete = True
+        if state.fss_progress is None:
+            state.fss_progress = 1.0
+
+        completed_count = state.fss_completed_systems.get(completed_key)
+        if state.body_count is None and completed_count is not None:
+            state.body_count = completed_count
+        break
