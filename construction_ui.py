@@ -78,6 +78,23 @@ class BodySortItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+class NumericSortItem(QTableWidgetItem):
+    """QTableWidget item that sorts comma-formatted numbers numerically."""
+
+    def __init__(self, text: str, value: int):
+        super().__init__(text)
+        self.sort_value = int(value)
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        if isinstance(other, NumericSortItem):
+            return self.sort_value < other.sort_value
+        try:
+            other_value = int(other.text().replace(',', '').strip())
+        except (AttributeError, ValueError):
+            return super().__lt__(other)
+        return self.sort_value < other_value
+
+
 @dataclass
 class SiteData:
     body: str
@@ -180,15 +197,20 @@ class ConstructionPanel(QWidget):
     """Editable construction plan contained within the existing fixed-size UI."""
 
     current_build_changed = pyqtSignal(str, str)
+    system_lock_changed = pyqtSignal(str, bool)
 
     def __init__(self, settings: QSettings, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.settings = settings
-        self.system_name = "Unknown system"
+        self.system_locked = self.settings.value("construction/system_locked", False, type=bool)
+        self.locked_system_name = str(self.settings.value("construction/locked_system_name", "") or "")
+        self.system_name = self.locked_system_name if self.system_locked and self.locked_system_name else "Unknown system"
+        self.current_system_name = self.system_name
         self.plan = PlanData()
         self.editing = False
         self.live_depot: Optional[dict[str, Any]] = None
         self.live_depot_resources: list[MaterialData] = []
+        self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
         self._load_plan()
         self._build_ui()
@@ -218,13 +240,125 @@ class ConstructionPanel(QWidget):
         self.settings.setValue(self._key(), json.dumps(asdict(self.plan), sort_keys=True))
         self.settings.sync()
 
-    def set_system(self, system_name: str) -> None:
-        system_name = system_name or "Unknown system"
-        if system_name == self.system_name:
+    def _load_active_focus(self) -> dict[str, Any]:
+        raw = self.settings.value("construction/active_focus", "")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(str(raw))
+        except (TypeError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save_active_focus_record(self, facility: FacilityData, materials: Optional[list[MaterialData]] = None) -> None:
+        if not facility or not facility.role or facility.role == "Not selected":
             return
+        if materials is None:
+            materials = self._stored_materials_for(facility)
+        record = {
+            "system_name": self.system_name,
+            "plan_key": self._key(),
+            "build": facility.role,
+            "location": facility.location,
+            "facility_id": facility.facility_id,
+            "facility_type": facility.facility_type,
+            "tier": facility.tier,
+            "economy": facility.economy,
+            "preferred_site": facility.preferred_site,
+            "reason": facility.reason,
+            "confidence": facility.confidence,
+            "material_key": self._material_key_for(facility),
+            "ship_capacity_tons": int(self.plan.ship_capacity_tons or 1),
+            "materials": [self._material_dict(row) for row in materials],
+        }
+        self.active_focus = record
+        self.settings.setValue("construction/active_focus", json.dumps(record, sort_keys=True))
+        self.settings.sync()
+
+    def _active_focus_facility(self) -> Optional[FacilityData]:
+        if not self.active_focus:
+            return None
+        build = str(self.active_focus.get("build", "")).strip()
+        if not build or build == "Not selected":
+            return None
+        return FacilityData(
+            role=build,
+            reason=str(self.active_focus.get("reason", "Pinned focus build from another system")),
+            preferred_site=str(self.active_focus.get("preferred_site", "surface")),
+            location=str(self.active_focus.get("location", "Not selected")),
+            status="Building now",
+            facility_id=str(self.active_focus.get("facility_id", "")),
+            facility_type=str(self.active_focus.get("facility_type", "")),
+            tier=self._int_cell(self.active_focus.get("tier", 0)),
+            economy=str(self.active_focus.get("economy", "")),
+            confidence=str(self.active_focus.get("confidence", "active_focus")),
+        )
+
+    def display_system_name(self) -> str:
+        """System whose construction plan is displayed by every construction tab."""
+        if self.system_locked and self.locked_system_name:
+            return self.locked_system_name
+        return self.system_name or "Unknown system"
+
+    def live_system_name(self) -> str:
+        """The commander's current journal system, even while the plan is locked."""
+        return self.current_system_name or "Unknown system"
+
+    def focus_system_name(self) -> str:
+        """System that owns the pinned focus build."""
+        active_system = str(self.active_focus.get("system_name", "") or "").strip()
+        if active_system:
+            return active_system
+        return self.display_system_name()
+
+    def system_lock_state(self) -> tuple[str, bool]:
+        return self.display_system_name(), bool(self.system_locked)
+
+    def _save_system_lock(self) -> None:
+        self.settings.setValue("construction/system_locked", bool(self.system_locked))
+        self.settings.setValue("construction/locked_system_name", self.locked_system_name)
+        self.settings.sync()
+
+    def _emit_system_lock_changed(self) -> None:
+        self.system_lock_changed.emit(self.display_system_name(), bool(self.system_locked))
+
+    def set_system_locked(self, locked: bool, current_system: Optional[str] = None) -> None:
+        current_system = (current_system or "").strip() or self.current_system_name or "Unknown system"
+
+        if locked:
+            # Lock the plan currently displayed, not whichever shopping system the
+            # commander may have jumped to since opening Construction mode.
+            lock_target = self.system_name if self.system_name not in ("", "Unknown system") else current_system
+            self.system_locked = True
+            self.locked_system_name = lock_target
+            self.set_system(lock_target, force=True)
+        else:
+            # Unlocking intentionally follows the live journal system again.
+            self.system_locked = False
+            self.locked_system_name = ""
+            self.set_system(current_system, force=True)
+
+        self._save_system_lock()
+        self._emit_system_lock_changed()
+        self._apply_plan()
+
+    def toggle_system_lock(self, current_system: Optional[str] = None) -> None:
+        self.set_system_locked(not self.system_locked, current_system)
+
+    def set_system(self, system_name: str, *, force: bool = False) -> bool:
+        system_name = system_name or "Unknown system"
+        if self.system_locked and not force and self.locked_system_name and system_name != self.locked_system_name:
+            return False
+        if system_name == self.system_name:
+            return True
         self.system_name = system_name
+        if self.system_locked:
+            self.locked_system_name = system_name
+        self.active_focus = self._load_active_focus()
         self._load_plan()
         self._apply_plan()
+        self._emit_system_lock_changed()
+        return True
 
     @staticmethod
     def _body_sort_key(name: str, body_id: int = 999999) -> tuple[Any, ...]:
@@ -318,7 +452,11 @@ class ConstructionPanel(QWidget):
 
     def set_system_data(self, system_name: str, bodies: dict[str, Any]) -> None:
         """Load every indexed body while preserving player-entered corrections."""
-        self.set_system(system_name)
+        self.current_system_name = system_name or "Unknown system"
+        if not self.set_system(system_name):
+            # System Status Lock is active and the commander has jumped away.
+            # Keep the planning tabs pinned to the locked colony system.
+            return
         known = {site.body: site for site in self.plan.sites}
         changed = False
         for name, body in sorted(
@@ -378,29 +516,41 @@ class ConstructionPanel(QWidget):
         """Use live journal depot resources for the Materials tab.
 
         The in-game ColonisationConstructionDepot event is the authority for
-        Required/Delivered amounts after a construction site exists. Facility
-        database materials are only a planning fallback before that event is
-        observed.
+        Required/Delivered amounts after a construction site exists. The last
+        focused build is also pinned globally, so the material list stays visible
+        while hauling from another system.
         """
         candidates: list[dict[str, Any]] = []
         for depot in (depots or {}).values():
             if not isinstance(depot, dict):
                 continue
             depot_system = depot.get("system")
-            depot_address = depot.get("system_address")
             if depot_system and str(depot_system) != self.system_name:
                 continue
             candidates.append(depot)
 
         if not candidates:
-            if self.live_depot is not None or self.live_depot_resources:
-                self.live_depot = None
-                self.live_depot_resources = []
-                self._render_materials()
+            # Do not wipe the pinned/focus material list when the commander jumps
+            # away to buy cargo. A new depot event will replace it when observed.
             return
 
         candidates.sort(key=lambda row: str(row.get("timestamp") or ""), reverse=True)
         depot = candidates[0]
+
+        facility = self._focus_facility()
+        saved_sources = {
+            row.commodity.lower(): row.source
+            for row in self._stored_materials_for(facility, include_live=False)
+            if row.source and not self._is_placeholder_source(row.source)
+        }
+        saved_sources.update({
+            str(row.get("commodity", "")).lower(): str(row.get("source", ""))
+            for row in self.active_focus.get("materials", [])
+            if isinstance(row, dict)
+            and row.get("source")
+            and not self._is_placeholder_source(str(row.get("source", "")))
+        })
+
         resources: list[MaterialData] = []
         for row in depot.get("resources", []) or []:
             if not isinstance(row, dict):
@@ -413,15 +563,29 @@ class ConstructionPanel(QWidget):
                 required=self._int_cell(row.get("required", 0)),
                 delivered=self._int_cell(row.get("delivered", 0)),
                 carrier=self._int_cell(row.get("carrier", 0)),
-                source=str(row.get("source", "Paste Location")),
+                source=saved_sources.get(commodity.lower(), ""),
             ))
 
         previous_key = self.live_depot.get("market_id") if isinstance(self.live_depot, dict) else None
         next_key = depot.get("market_id")
-        previous_count = len(self.live_depot_resources)
+        previous_signature = [
+            (row.commodity, row.required, row.delivered, row.carrier)
+            for row in self.live_depot_resources
+        ]
+        next_signature = [
+            (row.commodity, row.required, row.delivered, row.carrier)
+            for row in resources
+        ]
         self.live_depot = depot
         self.live_depot_resources = resources
-        if previous_key != next_key or previous_count != len(resources):
+
+        if facility is not None and resources:
+            key = self._material_key_for(facility)
+            self.plan.materials_by_build[key] = [self._material_dict(row) for row in resources]
+            self._save_plan()
+            self._save_active_focus_record(facility, resources)
+
+        if previous_key != next_key or previous_signature != next_signature:
             self._render_materials()
 
     def set_current_build(self, facility: str, location: str) -> None:
@@ -440,7 +604,7 @@ class ConstructionPanel(QWidget):
         self.title.setObjectName("tableTitle")
         top.addWidget(self.title)
         top.addStretch()
-        self.lock_label = QLabel("Plan locked")
+        self.lock_label = QLabel("Plan fields locked")
         self.lock_label.setObjectName("constructionLock")
         self.edit_button = QPushButton("Edit Plan")
         self.edit_button.setObjectName("constructionEditButton")
@@ -483,32 +647,72 @@ class ConstructionPanel(QWidget):
         grid.setContentsMargins(6, 6, 6, 6)
         grid.setSpacing(8)
 
-        purpose, p = self._box("System Purpose")
+        # The Overview answers four player questions: which colony plan is open,
+        # what is active, what should be built next, and what should be hauled now.
+        purpose, p = self._box("Build System")
+        self.overview_build_system_value = QLabel("Unknown system")
+        self.overview_build_system_value.setObjectName("constructionBigValue")
+        self.overview_system_state_value = QLabel("Following current system")
+        self.overview_system_state_value.setObjectName("constructionStatusPill")
         self.primary_combo = QComboBox()
         self.primary_combo.addItems(PRIMARY_GOALS)
         self.secondary_combo = QComboBox()
         self.secondary_combo.addItems(SECONDARY_GOALS)
         self.phase_edit = QLineEdit()
-        for label, widget in (("Primary goal", self.primary_combo), ("Secondary goal", self.secondary_combo), ("Colony phase", self.phase_edit)):
-            p.addWidget(QLabel(label))
-            p.addWidget(widget)
-        p.addStretch()
+        self.phase_edit.hide()
+        p.addWidget(self.overview_build_system_value)
+        p.addWidget(self.overview_system_state_value)
+        p.addWidget(QLabel("Primary goal"))
+        p.addWidget(self.primary_combo)
+        p.addWidget(QLabel("Secondary goal"))
+        p.addWidget(self.secondary_combo)
 
-        existing, e = self._box("Existing Colony")
+        # Existing-colony details are setup data, not daily hauling information.
+        # Keep them available only while Edit Plan is active.
+        self.colony_setup_editor = QWidget()
+        colony_layout = QVBoxLayout(self.colony_setup_editor)
+        colony_layout.setContentsMargins(0, 6, 0, 0)
+        colony_layout.setSpacing(4)
         self.primary_port_check = QCheckBox("Primary port is complete")
         self.primary_port_name_edit = QLineEdit()
         self.primary_port_location_edit = QLineEdit()
-        e.addWidget(self.primary_port_check)
-        e.addWidget(QLabel("Primary port / station name"))
-        e.addWidget(self.primary_port_name_edit)
-        e.addWidget(QLabel("Occupied location"))
-        e.addWidget(self.primary_port_location_edit)
-        e.addStretch()
+        colony_layout.addWidget(self.primary_port_check)
+        colony_layout.addWidget(QLabel("Primary port / station name"))
+        colony_layout.addWidget(self.primary_port_name_edit)
+        colony_layout.addWidget(QLabel("Occupied location"))
+        colony_layout.addWidget(self.primary_port_location_edit)
+        p.addWidget(self.colony_setup_editor)
+        p.addStretch()
+
+        current, c = self._box("Active Job")
+        self.current_build_value = QLabel("Not selected")
+        self.current_build_value.setObjectName("constructionBigValue")
+        self.current_build_value.setWordWrap(True)
+        self.current_focus_system_value = QLabel("Build system: not selected")
+        self.current_focus_system_value.setObjectName("constructionMuted")
+        self.current_location_value = QLabel("Not selected")
+        self.current_location_value.setWordWrap(True)
+        c.addWidget(self.current_build_value)
+        c.addWidget(self.current_focus_system_value)
+        c.addWidget(QLabel("Location"))
+        c.addWidget(self.current_location_value)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        c.addWidget(QLabel("Material progress"))
+        c.addWidget(self.progress)
+        self.undo_focus_button = QPushButton("Undo Focus Change")
+        self.undo_focus_button.setToolTip("Restore the previous focus build if this was selected by mistake.")
+        self.undo_focus_button.clicked.connect(self.undo_focus_change)
+        c.addWidget(self.undo_focus_button)
+        c.addStretch()
 
         next_box, n = self._box("Next Recommended Build")
         self.next_build_value = QLabel("No recommendation yet")
         self.next_build_value.setObjectName("constructionBigValue")
+        self.next_build_value.setWordWrap(True)
         self.next_location_value = QLabel("Enter body slot counts on Sites")
+        self.next_location_value.setWordWrap(True)
         self.next_reason_value = QLabel("")
         self.next_reason_value.setWordWrap(True)
         n.addWidget(self.next_build_value)
@@ -516,38 +720,42 @@ class ConstructionPanel(QWidget):
         n.addWidget(self.next_location_value)
         n.addWidget(QLabel("Why"))
         n.addWidget(self.next_reason_value)
-        focus_buttons = QHBoxLayout()
         self.set_next_current_button = QPushButton("Set This as Focus Build")
         self.set_next_current_button.clicked.connect(self.set_recommendation_as_current)
-        self.undo_focus_button = QPushButton("Undo Focus")
-        self.undo_focus_button.setToolTip("Restore the previous focus build if this was clicked by mistake.")
-        self.undo_focus_button.clicked.connect(self.undo_focus_change)
-        focus_buttons.addWidget(self.set_next_current_button)
-        focus_buttons.addWidget(self.undo_focus_button)
-        n.addLayout(focus_buttons)
+        n.addWidget(self.set_next_current_button)
         n.addStretch()
 
-        current, c = self._box("Focus Build")
-        self.current_build_value = QLabel("Not selected")
-        self.current_build_value.setObjectName("constructionBigValue")
-        self.current_location_value = QLabel("Not selected")
-        c.addWidget(QLabel("Facility"))
-        c.addWidget(self.current_build_value)
-        c.addWidget(QLabel("Location"))
-        c.addWidget(self.current_location_value)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        c.addWidget(QLabel("Progress"))
-        c.addWidget(self.progress)
-        c.addStretch()
+        action, a = self._box("Next Action")
+        self.next_action_title = QLabel("Choose a focus build")
+        self.next_action_title.setObjectName("constructionBigValue")
+        self.next_action_title.setWordWrap(True)
+        self.next_action_detail = QLabel("Set the recommended build as Focus to begin tracking materials.")
+        self.next_action_detail.setWordWrap(True)
+        self.next_action_source = QLabel("Paste Location")
+        self.next_action_source.setObjectName("materialSourcePill")
+        self.next_action_source.setWordWrap(True)
+        a.addWidget(self.next_action_title)
+        a.addWidget(self.next_action_detail)
+        a.addWidget(QLabel("Material source"))
+        a.addWidget(self.next_action_source)
+        action_buttons = QHBoxLayout()
+        self.open_materials_button = QPushButton("Open Materials")
+        self.open_materials_button.clicked.connect(lambda: self.set_view_name("Materials"))
+        self.copy_next_source_button = QPushButton("Copy Source")
+        self.copy_next_source_button.clicked.connect(self.copy_next_action_source)
+        action_buttons.addWidget(self.open_materials_button)
+        action_buttons.addWidget(self.copy_next_source_button)
+        a.addLayout(action_buttons)
+        a.addStretch()
 
         grid.addWidget(purpose, 0, 0)
-        grid.addWidget(existing, 0, 1)
-        grid.addWidget(next_box, 0, 2)
-        grid.addWidget(current, 0, 3)
-        for col in range(4):
-            grid.setColumnStretch(col, 1)
+        grid.addWidget(current, 0, 1)
+        grid.addWidget(next_box, 1, 0)
+        grid.addWidget(action, 1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 1)
+        grid.setRowStretch(1, 1)
         return page
 
     def _build_sites_tab(self) -> QWidget:
@@ -617,10 +825,7 @@ class ConstructionPanel(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        self.queue_notice = QLabel(
-            "Recommendations come from data/colonisation_facilities.json and are assigned to the first free matching slot. "
-            "Rows marked player_note/unverified still need in-game confirmation before being treated as guaranteed."
-        )
+        self.queue_notice = QLabel("Suggested build order for the selected Build System.")
         self.queue_notice.setWordWrap(True)
         self.queue_notice.setObjectName("constructionNotice")
         layout.addWidget(self.queue_notice)
@@ -637,10 +842,13 @@ class ConstructionPanel(QWidget):
         actions = QHBoxLayout()
         self.queue_focus_button = QPushButton("Set Selected as Focus Build")
         self.queue_complete_button = QPushButton("Mark Selected Complete")
+        self.queue_skip_button = QPushButton("Skip Selected")
         self.queue_focus_button.clicked.connect(self.set_selected_queue_as_current)
         self.queue_complete_button.clicked.connect(self.mark_selected_queue_complete)
+        self.queue_skip_button.clicked.connect(self.skip_selected_queue_item)
         actions.addWidget(self.queue_focus_button)
         actions.addWidget(self.queue_complete_button)
+        actions.addWidget(self.queue_skip_button)
         actions.addStretch()
         layout.addLayout(actions)
         return page
@@ -649,17 +857,37 @@ class ConstructionPanel(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
 
-        self.materials_notice = QLabel(
-            "Depot progress shows what the build still needs. Paste the station/system you plan to buy from into Material Source."
-        )
-        self.materials_notice.setWordWrap(True)
-        self.materials_notice.setObjectName("constructionNotice")
-        layout.addWidget(self.materials_notice)
+        self.materials_context = QLabel("No focus build selected")
+        self.materials_context.setObjectName("constructionNextBuild")
+        self.materials_context.setWordWrap(True)
+        layout.addWidget(self.materials_context)
+
+        self.next_haul_card = QFrame()
+        self.next_haul_card.setObjectName("nextHaulCard")
+        next_haul_layout = QHBoxLayout(self.next_haul_card)
+        next_haul_layout.setContentsMargins(12, 8, 12, 8)
+        next_haul_layout.setSpacing(10)
+        next_haul_text = QVBoxLayout()
+        next_haul_text.setSpacing(2)
+        self.next_haul_title = QLabel("NEXT HAUL: choose a focus build")
+        self.next_haul_title.setObjectName("nextHaulTitle")
+        self.next_haul_detail = QLabel("")
+        self.next_haul_detail.setObjectName("constructionMuted")
+        self.next_haul_source = QLabel("Paste Location")
+        self.next_haul_source.setObjectName("materialSourcePill")
+        self.next_haul_source.setWordWrap(True)
+        next_haul_text.addWidget(self.next_haul_title)
+        next_haul_text.addWidget(self.next_haul_detail)
+        next_haul_layout.addLayout(next_haul_text, stretch=1)
+        next_haul_layout.addWidget(self.next_haul_source, stretch=1)
+        self.copy_haul_source_button = QPushButton("Copy Source")
+        self.copy_haul_source_button.clicked.connect(self.copy_next_action_source)
+        next_haul_layout.addWidget(self.copy_haul_source_button)
+        layout.addWidget(self.next_haul_card)
 
         toolbar = QHBoxLayout()
-        self.materials_context = QLabel("Materials for: no focus build selected")
-        self.materials_context.setObjectName("constructionNextBuild")
         self.ship_capacity_spin = QSpinBox()
         self.ship_capacity_spin.setRange(1, 50000)
         self.ship_capacity_spin.setSuffix(" t")
@@ -668,7 +896,7 @@ class ConstructionPanel(QWidget):
         self.add_material_button.clicked.connect(self.add_material_row)
         self.remove_material_button.clicked.connect(self.remove_selected_material_row)
         self.ship_capacity_spin.valueChanged.connect(lambda _value: self._render_materials())
-        toolbar.addWidget(self.materials_context, stretch=1)
+        toolbar.addStretch()
         toolbar.addWidget(QLabel("Ship capacity"))
         toolbar.addWidget(self.ship_capacity_spin)
         toolbar.addWidget(self.add_material_button)
@@ -679,7 +907,9 @@ class ConstructionPanel(QWidget):
         self.materials_table.setHorizontalHeaderLabels([
             "Commodity", "Required", "Delivered", "Carrier", "Still needed", "Ship trips", "Material Source"
         ])
-        self.materials_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.materials_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSortIndicatorShown(True)
         self.materials_table.verticalHeader().setVisible(False)
         self.materials_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.materials_table.itemChanged.connect(self.on_material_item_changed)
@@ -690,6 +920,7 @@ class ConstructionPanel(QWidget):
         self.copy_material_cell_action.triggered.connect(self.copy_selected_material_cell)
         self.materials_table.addAction(self.copy_material_source_action)
         self.materials_table.addAction(self.copy_material_cell_action)
+        self._materials_sort_initialized = False
         layout.addWidget(self.materials_table)
         return page
 
@@ -700,14 +931,28 @@ class ConstructionPanel(QWidget):
         except (TypeError, ValueError):
             return 0
 
+    def _focus_facility(self) -> Optional[FacilityData]:
+        local_focus = next((facility for facility in self.plan.facilities if facility.status == "Building now"), None)
+        if local_focus is not None:
+            return local_focus
+        return self._active_focus_facility()
+
     def _focus_or_next_facility(self) -> Optional[FacilityData]:
+        focus = self._focus_facility()
+        if focus is not None:
+            return focus
+        return next((facility for facility in self.plan.facilities if facility.status == "Queued"), None)
+
+    def _is_active_focus_facility(self, facility: Optional[FacilityData]) -> bool:
+        if facility is None or not self.active_focus:
+            return False
         return (
-            next((facility for facility in self.plan.facilities if facility.status == "Building now"), None)
-            or next((facility for facility in self.plan.facilities if facility.status == "Queued"), None)
+            facility.role == str(self.active_focus.get("build", ""))
+            and facility.location == str(self.active_focus.get("location", ""))
         )
 
     def _material_key_for(self, facility: Optional[FacilityData] = None) -> str:
-        facility = facility or self._focus_or_next_facility()
+        facility = facility or self._focus_facility()
         if facility is None:
             return "manual"
         return facility.facility_id or facility.role
@@ -730,9 +975,7 @@ class ConstructionPanel(QWidget):
             for item in CATALOG.material_requirements(facility.facility_id)
         ]
 
-    def _stored_materials_for(self, facility: Optional[FacilityData]) -> list[MaterialData]:
-        key = self._material_key_for(facility)
-        stored = self.plan.materials_by_build.get(key, [])
+    def _rows_from_dicts(self, stored: list[dict[str, Any]]) -> list[MaterialData]:
         rows: list[MaterialData] = []
         for row in stored:
             if not isinstance(row, dict):
@@ -747,10 +990,55 @@ class ConstructionPanel(QWidget):
                 carrier=self._int_cell(row.get("carrier", 0)),
                 source=str(row.get("source", "")),
             ))
-        if rows:
-            return rows
-        if self.live_depot_resources:
-            return list(self.live_depot_resources)
+        return rows
+
+    def _merge_material_sources(
+        self,
+        authority_rows: list[MaterialData],
+        saved_rows: list[MaterialData],
+    ) -> list[MaterialData]:
+        sources = {
+            row.commodity.lower(): row.source
+            for row in saved_rows
+            if row.source and not self._is_placeholder_source(row.source)
+        }
+        merged: list[MaterialData] = []
+        for row in authority_rows:
+            merged.append(MaterialData(
+                commodity=row.commodity,
+                required=row.required,
+                delivered=row.delivered,
+                carrier=row.carrier,
+                source=sources.get(row.commodity.lower(), row.source),
+            ))
+        return merged
+
+    def _stored_materials_for(
+        self,
+        facility: Optional[FacilityData],
+        *,
+        include_live: bool = True,
+    ) -> list[MaterialData]:
+        key = self._material_key_for(facility)
+        stored_rows = self._rows_from_dicts(self.plan.materials_by_build.get(key, []))
+
+        active_rows: list[MaterialData] = []
+        if self._is_active_focus_facility(facility):
+            active_rows = self._rows_from_dicts(self.active_focus.get("materials", []) or [])
+
+        saved_rows = stored_rows or active_rows
+
+        if include_live and self.live_depot_resources and (
+            not self.live_depot
+            or not self.live_depot.get("system")
+            or str(self.live_depot.get("system")) == self.system_name
+            or self._is_active_focus_facility(facility)
+        ):
+            return self._merge_material_sources(self.live_depot_resources, saved_rows)
+
+        if saved_rows:
+            return saved_rows
+
         return self._seed_materials_for(facility)
 
     def _collect_material_edits(self) -> list[MaterialData]:
@@ -772,11 +1060,20 @@ class ConstructionPanel(QWidget):
         return rows
 
     def _store_material_edits(self) -> None:
-        facility = self._focus_or_next_facility()
+        facility = self._focus_facility()
+        rows = self._collect_material_edits()
+        if self._is_active_focus_facility(facility):
+            self.active_focus["materials"] = [self._material_dict(row) for row in rows]
+            self.active_focus["ship_capacity_tons"] = int(self.plan.ship_capacity_tons or 1)
+            self.settings.setValue("construction/active_focus", json.dumps(self.active_focus, sort_keys=True))
+            self.settings.sync()
+            return
         key = self._material_key_for(facility)
         self.plan.materials_by_build[key] = [
-            self._material_dict(row) for row in self._collect_material_edits()
+            self._material_dict(row) for row in rows
         ]
+        if facility is not None and facility.status == "Building now":
+            self._save_active_focus_record(facility, rows)
 
     def add_material_row(self) -> None:
         row = self.materials_table.rowCount()
@@ -791,6 +1088,8 @@ class ConstructionPanel(QWidget):
         row = self.materials_table.currentRow()
         if row >= 0:
             self.materials_table.removeRow(row)
+            self._store_material_edits()
+            self._save_plan()
 
 
     @staticmethod
@@ -823,47 +1122,138 @@ class ConstructionPanel(QWidget):
         if not self._is_placeholder_source(text):
             QApplication.clipboard().setText(text)
 
+    def _next_action_data(self) -> tuple[str, str, str, int]:
+        """Return title, detail, source and progress for the active focus build."""
+        facility = self._focus_facility()
+        if facility is None:
+            return (
+                "Choose a focus build",
+                "Set the recommended build as Focus to begin tracking materials.",
+                "Paste Location",
+                0,
+            )
+
+        rows = self._stored_materials_for(facility)
+        required_total = sum(max(0, row.required) for row in rows)
+        delivered_total = sum(min(max(0, row.delivered), max(0, row.required)) for row in rows)
+        progress = int((delivered_total * 100) / required_total) if required_total else 0
+        needed = sorted(
+            (row for row in rows if row.still_needed > 0),
+            key=lambda row: row.still_needed,
+            reverse=True,
+        )
+
+        if needed:
+            material = needed[0]
+            capacity = max(1, int(self.plan.ship_capacity_tons or 1))
+            trips = (material.still_needed + capacity - 1) // capacity
+            source = material.source.strip() if material.source else "Paste Location"
+            if self._is_placeholder_source(source):
+                source = "Paste Location"
+            return (
+                f"Deliver {material.commodity}",
+                f"{material.still_needed:,} t left • {trips} ship trip{'s' if trips != 1 else ''}",
+                source,
+                progress,
+            )
+
+        if rows:
+            return (
+                "Material delivery complete",
+                "Return to the construction site and verify the build completes.",
+                "No source needed",
+                100,
+            )
+
+        return (
+            "Load depot requirements",
+            "Visit the focused construction site so Elite writes its depot material list.",
+            "Paste Location",
+            0,
+        )
+
+    def _update_overview_status(self) -> None:
+        if not hasattr(self, "overview_build_system_value"):
+            return
+
+        build_system = self.display_system_name()
+        current_system = self.live_system_name()
+        self.overview_build_system_value.setText(build_system)
+        if self.system_locked:
+            state_text = "🔒 Locked to build system"
+        elif current_system == build_system:
+            state_text = "🔓 Following current system"
+        else:
+            state_text = f"🔓 Following current system: {current_system}"
+        self.overview_system_state_value.setText(state_text)
+
+        build_name, build_location = self.focus_build_display()
+        self.current_build_value.setText(build_name)
+        self.current_location_value.setText(build_location)
+        self.current_focus_system_value.setText(f"Build system: {self.focus_system_name()}")
+
+        action_title, action_detail, source, progress = self._next_action_data()
+        self.progress.setValue(progress)
+        self.next_action_title.setText(action_title)
+        self.next_action_detail.setText(action_detail)
+        self.next_action_source.setText(source)
+        source_available = not self._is_placeholder_source(source) and source != "No source needed"
+        source_missing = not source_available and source != "No source needed"
+        self.next_action_source.setProperty("missing", "true" if source_missing else "false")
+        self.next_action_source.style().unpolish(self.next_action_source)
+        self.next_action_source.style().polish(self.next_action_source)
+        self.copy_next_source_button.setEnabled(source_available)
+        if hasattr(self, "next_haul_title"):
+            self.next_haul_title.setText(f"NEXT HAUL: {action_title}")
+            self.next_haul_detail.setText(action_detail)
+            self.next_haul_source.setText(source)
+            self.next_haul_source.setProperty("missing", "true" if source_missing else "false")
+            self.next_haul_source.style().unpolish(self.next_haul_source)
+            self.next_haul_source.style().polish(self.next_haul_source)
+            self.copy_haul_source_button.setEnabled(source_available)
+
+    def copy_next_action_source(self) -> None:
+        _title, _detail, source, _progress = self._next_action_data()
+        if not self._is_placeholder_source(source) and source != "No source needed":
+            QApplication.clipboard().setText(source)
+
     def _render_materials(self) -> None:
         if not hasattr(self, "materials_table"):
             return
-        facility = self._focus_or_next_facility()
-        self.plan.ship_capacity_tons = self.ship_capacity_spin.value() if hasattr(self, "ship_capacity_spin") else self.plan.ship_capacity_tons
+        facility = self._focus_facility()
+        self.plan.ship_capacity_tons = (
+            self.ship_capacity_spin.value()
+            if hasattr(self, "ship_capacity_spin")
+            else self.plan.ship_capacity_tons
+        )
         capacity = max(1, int(self.plan.ship_capacity_tons or 1))
-        rows = self._stored_materials_for(facility)
-
-        live_label = ""
-        if self.live_depot:
-            station = self.live_depot.get("station") or "Construction depot"
-            body = self.live_depot.get("body") or "Unknown body"
-            live_label = f"  •  depot progress: {station} @ {body}"
+        rows = self._stored_materials_for(facility) if facility is not None else []
 
         if facility is None:
-            self.materials_context.setText("Materials for: no focus build selected" + live_label)
-            self.materials_notice.setText(
-                "Set a focus build first. Paste a buying station/system into Material Source after the material rows appear."
+            self.materials_context.setText(
+                f"No focus build selected • Build system: {self.display_system_name()}"
             )
         else:
-            self.materials_context.setText(f"Materials for: {facility.role}  •  {facility.location}{live_label}")
-            if self.live_depot_resources:
-                self.materials_notice.setText(
-                    "Using live depot progress for Required and Delivered. Paste where you will buy each commodity into Material Source."
-                )
-            elif rows:
-                self.materials_notice.setText(
-                    "Using the facility database material template. Paste where you will buy each commodity into Material Source."
-                )
-            else:
-                self.materials_notice.setText(
-                    f"No material template or live depot data is available for {facility.role}. "
-                    "Visit/dock at the construction site once so Elite writes depot progress, or add the facility materials to the JSON database."
-                )
+            self.materials_context.setText(
+                f"BUILDING: {facility.role}  •  {facility.location}  •  "
+                f"Build system: {self.focus_system_name()}"
+            )
 
         self._rendering_materials = True
+        if self._materials_sort_initialized:
+            sort_section = self.materials_table.horizontalHeader().sortIndicatorSection()
+            sort_order = self.materials_table.horizontalHeader().sortIndicatorOrder()
+        else:
+            sort_section = 4
+            sort_order = Qt.SortOrder.DescendingOrder
+
         self.materials_table.setSortingEnabled(False)
         try:
             if not rows:
                 self.materials_table.setRowCount(1)
-                values = ["No material data yet", "", "", "", "", "", "Paste Location"]
+                values = [
+                    "No material data yet", "", "", "", "", "", "Paste Location"
+                ]
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(value)
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -881,15 +1271,19 @@ class ConstructionPanel(QWidget):
                     source = material.source.strip() if material.source else "Paste Location"
                     values = [
                         material.commodity,
-                        str(material.required),
-                        str(material.delivered),
-                        str(material.carrier),
-                        str(left),
+                        f"{material.required:,}",
+                        f"{material.delivered:,}",
+                        f"{material.carrier:,}",
+                        f"{left:,}",
                         str(trips),
                         source,
                     ]
                     for col, value in enumerate(values):
-                        item = QTableWidgetItem(value)
+                        if col in (1, 2, 3, 4, 5):
+                            item = NumericSortItem(value, self._int_cell(value))
+                        else:
+                            item = QTableWidgetItem(value)
+
                         editable = self.editing and col in (0, 1, 2, 3, 6)
                         if not self.editing and col == 6:
                             editable = True
@@ -897,21 +1291,30 @@ class ConstructionPanel(QWidget):
                             editable = False
                         if not editable:
                             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
                         if left > 0 and col in (0, 4, 5):
                             item.setForeground(QColor("#ffb000"))
+                        elif left == 0:
+                            item.setForeground(QColor("#6F7B85"))
+                            item.setBackground(QColor("#101A22"))
+
                         if col == 6:
                             if self._is_placeholder_source(value):
                                 item.setText("Paste Location")
                                 item.setBackground(QColor("#493710"))
                                 item.setForeground(QColor("#F59E0B"))
                             else:
-                                # Bio-progress-like pill color: make saved sources stand out.
                                 item.setBackground(QColor("#5B21B6"))
                                 item.setForeground(QColor("#FFFFFF"))
                         self.materials_table.setItem(row, col, item)
         finally:
             self._rendering_materials = False
             self.materials_table.setSortingEnabled(True)
+            if 0 <= sort_section < self.materials_table.columnCount():
+                self.materials_table.sortItems(sort_section, sort_order)
+            self._materials_sort_initialized = True
+
+        self._update_overview_status()
 
     @staticmethod
     def _parse_usage(text: str) -> tuple[int, int]:
@@ -959,7 +1362,7 @@ class ConstructionPanel(QWidget):
 
     def set_editing(self, enabled: bool) -> None:
         self.editing = enabled
-        self.lock_label.setText("Editing unlocked" if enabled else "Plan locked")
+        self.lock_label.setText("Editing plan" if enabled else "Plan fields locked")
         self.edit_button.setVisible(not enabled)
         self.cancel_button.setVisible(enabled)
         self.save_button.setVisible(enabled)
@@ -977,14 +1380,19 @@ class ConstructionPanel(QWidget):
             QTableWidget.EditTrigger.AllEditTriggers if enabled
             else QTableWidget.EditTrigger.NoEditTriggers
         )
+        # Confidence is troubleshooting data. Keep the normal player workflow
+        # focused on slots and builds, but reveal it during Edit Plan.
+        self.sites_table.setColumnHidden(6, not enabled)
+        if hasattr(self, "colony_setup_editor"):
+            self.colony_setup_editor.setVisible(enabled)
         if hasattr(self, "materials_table"):
             # Material Source stays editable even when the plan is locked,
             # because choosing where to buy commodities is an operational action.
             self.materials_table.setEditTriggers(QTableWidget.EditTrigger.AllEditTriggers)
             self._render_materials()
         if hasattr(self, "add_material_button"):
-            self.add_material_button.setEnabled(enabled)
-            self.remove_material_button.setEnabled(enabled)
+            self.add_material_button.setVisible(enabled)
+            self.remove_material_button.setVisible(enabled)
             self.ship_capacity_spin.setEnabled(enabled)
 
     def cancel_edits(self) -> None:
@@ -1049,8 +1457,9 @@ class ConstructionPanel(QWidget):
         self.primary_port_check.setChecked(self.plan.primary_port_complete)
         self.primary_port_name_edit.setText(self.plan.primary_port_name)
         self.primary_port_location_edit.setText(self.plan.primary_port_location)
-        self.current_build_value.setText(self.plan.current_build)
-        self.current_location_value.setText(self.plan.current_location)
+        display_build, display_location = self.focus_build_display()
+        self.current_build_value.setText(display_build)
+        self.current_location_value.setText(display_location)
         self.concurrent_spin.setValue(self.plan.concurrent_limit)
         if hasattr(self, "ship_capacity_spin"):
             self.ship_capacity_spin.setValue(self.plan.ship_capacity_tons or 1168)
@@ -1058,7 +1467,7 @@ class ConstructionPanel(QWidget):
         self._render_queue()
         self._render_materials()
         self.set_editing(False)
-        self.current_build_changed.emit(self.plan.current_build, self.plan.current_location)
+        self.current_build_changed.emit(display_build, display_location)
 
     def _preview_queue(self, _text: str) -> None:
         if self.editing:
@@ -1234,6 +1643,7 @@ class ConstructionPanel(QWidget):
         surface_used = sum(site.surface_used for site in self.plan.sites)
         surface_total = sum(site.surface_total for site in self.plan.sites)
         self.site_summary.setText(
+            f"Build system: {self.display_system_name()}  •  "
             f"Orbital {orbital_used}/{orbital_total}  •  Surface {surface_used}/{surface_total}  •  "
             f"Available: {max(0, orbital_total-orbital_used)} orbital, "
             f"{max(0, surface_total-surface_used)} surface"
@@ -1256,9 +1666,14 @@ class ConstructionPanel(QWidget):
             self._assign_recommended_locations()
 
         rows = self.plan.facilities
+        self.queue_notice.setText(
+            f"Build system: {self.display_system_name()}  •  Suggested order; verify any unconfirmed facility data in game."
+        )
         self.queue_table.setRowCount(len(rows))
         next_facility: Optional[FacilityData] = None
         for row, facility in enumerate(rows):
+            if self.plan.primary_port_complete and facility.facility_id == "primary_port":
+                facility.status = "Complete"
             if facility.status == "Queued" and next_facility is None:
                 next_facility = facility
                 action = "→ NEXT"
@@ -1266,6 +1681,8 @@ class ConstructionPanel(QWidget):
                 action = "⚒ BUILDING"
             elif facility.status == "Complete":
                 action = "✓ COMPLETE"
+            elif facility.status == "Skipped":
+                action = "Skipped"
             else:
                 action = "Planned"
             values = [
@@ -1287,6 +1704,8 @@ class ConstructionPanel(QWidget):
                     item.setBackground(QColor("#4A3410"))
                 elif action == "✓ COMPLETE":
                     item.setBackground(QColor("#173820"))
+                elif action == "Skipped":
+                    item.setForeground(QColor("#6F7B85"))
                 self.queue_table.setItem(row, col, item)
 
         if next_facility:
@@ -1338,6 +1757,7 @@ class ConstructionPanel(QWidget):
         self.plan.current_build = facility.role
         self.plan.current_location = facility.location
         self._save_plan()
+        self._save_active_focus_record(facility)
         self._apply_plan()
 
     def undo_focus_change(self) -> None:
@@ -1347,15 +1767,33 @@ class ConstructionPanel(QWidget):
             return
         current_build = self.plan.current_build
         current_location = self.plan.current_location
+        restored: Optional[FacilityData] = None
         for facility in self.plan.facilities:
             if facility.role == current_build and facility.location == current_location:
                 facility.status = "Queued"
             if facility.role == previous_build and facility.location == previous_location:
                 facility.status = "Building now"
+                restored = facility
         self.plan.current_build = previous_build
         self.plan.current_location = previous_location or "Not selected"
         self.plan.previous_current_build = current_build if current_build != "Not selected" else ""
         self.plan.previous_current_location = current_location if current_location != "Not selected" else ""
+        self._save_plan()
+        if restored is not None:
+            self._save_active_focus_record(restored)
+        self._apply_plan()
+
+
+    def skip_selected_queue_item(self) -> None:
+        facility = self._selected_queue_facility()
+        if facility is None:
+            return
+        if facility.status == "Building now":
+            self.plan.current_build = "Not selected"
+            self.plan.current_location = "Not selected"
+            self.active_focus = {}
+            self.settings.remove("construction/active_focus")
+        facility.status = "Skipped"
         self._save_plan()
         self._apply_plan()
 
@@ -1368,16 +1806,31 @@ class ConstructionPanel(QWidget):
             self.plan.primary_port_complete = True
             self.plan.primary_port_location = facility.location
             self.plan.primary_port_name = facility.role
-        if self.plan.current_build == facility.role:
+        if (
+            self.plan.current_build == facility.role
+            and self.plan.current_location == facility.location
+        ):
             self.plan.current_build = "Not selected"
             self.plan.current_location = "Not selected"
+            self.active_focus = {}
+            self.settings.remove("construction/active_focus")
         self._save_plan()
         self._apply_plan()
 
 
+
+    def focus_build_display(self) -> tuple[str, str]:
+        """Return the actual pinned/current build, not the next recommendation."""
+        facility = self._focus_facility()
+        if facility is not None:
+            return facility.role, facility.location
+        return self.plan.current_build, self.plan.current_location
+
     def focus_material_summary(self) -> tuple[str, str, str]:
         """Compact material status for construction mini mode."""
-        facility = self._focus_or_next_facility()
+        facility = self._focus_facility()
+        if facility is None:
+            return ("No focus build", "Trips —", "Source: —")
         rows = self._stored_materials_for(facility)
         capacity = max(1, int(self.plan.ship_capacity_tons or 1))
         needed = [row for row in rows if row.still_needed > 0]

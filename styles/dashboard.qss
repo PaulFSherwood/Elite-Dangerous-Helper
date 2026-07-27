@@ -351,6 +351,28 @@ QPushButton#constructionEditButton {
     color: #F59E0B;
     border: 1px solid #8A6300;
 }
+
+QPushButton#systemLockButton {
+    background-color: #493710;
+    color: #F59E0B;
+    border: 1px solid #8A6300;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 105px;
+}
+
+QPushButton#systemLockButton:hover {
+    background-color: #5A4615;
+    color: #FFFFFF;
+}
+
+QPushButton#systemLockButton[locked="true"] {
+    background-color: #4C1D95;
+    color: #FFFFFF;
+    border: 1px solid #8B5CF6;
+}
 QProgressBar {
     border: 1px solid #263A4A;
     border-radius: 5px;
@@ -382,4 +404,49 @@ QLabel#modeSelectorLabel {
     background-color: transparent;
     color: #9FB0BF;
     font-size: 12px;
+}
+
+/* Construction workflow v3 --------------------------------------------- */
+QPushButton#systemLockButton {
+    min-width: 145px;
+}
+
+QLabel#constructionMuted {
+    color: #9FB0BF;
+}
+
+QLabel#constructionStatusPill {
+    background-color: #17232D;
+    color: #9FB0BF;
+    border: 1px solid #344554;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-weight: 600;
+}
+
+QLabel#materialSourcePill {
+    background-color: #5B21B6;
+    color: #FFFFFF;
+    border: 1px solid #8B5CF6;
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-weight: 700;
+}
+
+QFrame#nextHaulCard {
+    background-color: #101D27;
+    border: 1px solid #5B3B05;
+    border-radius: 8px;
+}
+
+QLabel#nextHaulTitle {
+    color: #F59E0B;
+    font-weight: 800;
+    font-size: 14px;
+}
+
+QLabel#materialSourcePill[missing="true"] {
+    background-color: #493710;
+    color: #F59E0B;
+    border: 1px solid #8A6300;
 }

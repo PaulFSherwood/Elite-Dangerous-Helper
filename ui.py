@@ -48,7 +48,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v2.7.7"
+VERSION = "v3.0.0"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -569,8 +569,14 @@ class OverlayWindow(QWidget):
         construction_goal_layout.setContentsMargins(0, 0, 0, 0)
         self.construction_goal_summary = QLabel("System goal: Balanced Colony<br>Secondary: None")
         self.construction_goal_summary.setTextFormat(Qt.TextFormat.RichText)
-        construction_goal_layout.addWidget(self.construction_goal_summary)
-        construction_goal_layout.addStretch()
+        self.system_lock_button = QPushButton("🔓 Lock Build System")
+        self.system_lock_button.setObjectName("systemLockButton")
+        self.system_lock_button.setToolTip(
+            "Lock every Construction tab to the displayed Build System while you travel for materials."
+        )
+        self.system_lock_button.clicked.connect(self.toggle_construction_system_lock)
+        construction_goal_layout.addWidget(self.construction_goal_summary, stretch=1)
+        construction_goal_layout.addWidget(self.system_lock_button)
 
         self.search_select_stack = QStackedWidget()
         self.search_select_stack.addWidget(self.exploration_search_widget)
@@ -648,6 +654,7 @@ class OverlayWindow(QWidget):
         # Hover text explains what each stat means.
         stats_card = QFrame()
         stats_card.setObjectName("commanderStatsCard")
+        self.stats_card = stats_card
         
         stats_layout = QVBoxLayout(stats_card)
         stats_layout.setContentsMargins(1, 1, 1, 1)
@@ -732,9 +739,15 @@ class OverlayWindow(QWidget):
         summary_row.addWidget(self.bio_card)
 
         middle_row = QHBoxLayout()
+        middle_row.setContentsMargins(0, 0, 0, 0)
         middle_row.setSpacing(ROW_SPACING)
         middle_row.addWidget(ship_status_card, stretch=1)
         middle_row.addWidget(summary_status_card, stretch=1)
+
+        # Keep the exploration-only ship/status row in a widget so
+        # Construction mode can hide it without changing the app width.
+        self.middle_status_widget = QWidget()
+        self.middle_status_widget.setLayout(middle_row)
 
         # ------------------------------------------------------------------
         # 5. Spreadsheet/table section
@@ -829,6 +842,7 @@ class OverlayWindow(QWidget):
 
         self.construction_panel = ConstructionPanel(self.settings)
         self.construction_panel.current_build_changed.connect(self.on_current_build_changed)
+        self.construction_panel.system_lock_changed.connect(self.on_construction_system_lock_changed)
         self.construction_panel.tabs.currentChanged.connect(self.sync_construction_view_combo)
 
         self.main_stack = QStackedWidget()
@@ -961,7 +975,7 @@ class OverlayWindow(QWidget):
         header.setSpacing(HEADER_SPACING)
         header.addWidget(self.special_card)
         header.addLayout(top_row)
-        header.addLayout(middle_row)
+        header.addWidget(self.middle_status_widget)
 
         layout = QVBoxLayout()
         layout.setSpacing(HEADER_SPACING)
@@ -1065,6 +1079,10 @@ class OverlayWindow(QWidget):
         self.search_rules_stack.setCurrentIndex(1 if construction else 0)
         self.main_stack.setCurrentIndex(1 if construction else 0)
         self.bottom_widget.setVisible(not construction)
+        if hasattr(self, "middle_status_widget"):
+            self.middle_status_widget.setVisible(not construction)
+        if hasattr(self, "stats_card"):
+            self.stats_card.setVisible(not construction)
         self.construction_view_combo.setEnabled(construction)
         self.settings.setValue("app_mode", mode)
         if construction:
@@ -1085,9 +1103,33 @@ class OverlayWindow(QWidget):
 
     def on_current_build_changed(self, facility: str, location: str) -> None:
         self.construction_status_label.setText(
-            f"<span style='color:#60A5FA;'>Current build</span><br>"
+            f"<span style='color:#60A5FA;'>Focus build</span><br>"
             f"<b>{facility}</b><br><span style='color:#9FB0BF;'>{location}</span>"
         )
+
+    def set_system_lock_button_style(self, locked: bool) -> None:
+        if not hasattr(self, "system_lock_button"):
+            return
+        self.system_lock_button.setText(
+            "🔒 Build Locked" if locked else "🔓 Lock Build System"
+        )
+        self.system_lock_button.setToolTip(
+            "Unlock and follow the live journal system." if locked
+            else "Lock every Construction tab to the displayed Build System while hauling."
+        )
+        self.system_lock_button.setProperty("locked", "true" if locked else "false")
+        self.system_lock_button.style().unpolish(self.system_lock_button)
+        self.system_lock_button.style().polish(self.system_lock_button)
+        self.system_lock_button.update()
+
+    def on_construction_system_lock_changed(self, _system_name: str, locked: bool) -> None:
+        self.set_system_lock_button_style(locked)
+        self.refresh()
+
+    def toggle_construction_system_lock(self) -> None:
+        state = self.monitor.state
+        self.construction_panel.toggle_system_lock(state.system or "Unknown system")
+        self.refresh()
 
     def toggle_view_mode(self) -> None:
         self.set_view_mode(not self.thin_mode)
@@ -1215,16 +1257,28 @@ class OverlayWindow(QWidget):
         state = self.monitor.state
         system = state.system or "Unknown system"
         if hasattr(self, "app_mode_combo") and self.app_mode_combo.currentText() == "Construction":
-            plan = self.construction_panel.plan
-            self.thin_system_label.setText(system)
-            material_line, trip_line, source_line = self.construction_panel.focus_material_summary()
-            self.thin_status_label.setText(
-                f"<b style='color:#F59E0B;'>BUILD:</b> {plan.current_build} "
-                f"<span style='color:#9FB0BF;'>— {plan.current_location}</span>"
-                f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
-                f" &nbsp;│&nbsp; {trip_line}"
-                f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
+            build_name, build_location = self.construction_panel.focus_build_display()
+            tracked_system, locked = self.construction_panel.system_lock_state()
+            self.thin_system_label.setText(
+                f"🔒 {tracked_system}" if locked else tracked_system
             )
+            self.thin_system_label.setToolTip(
+                f"Build system: {tracked_system}\nCurrent system: {system}"
+            )
+            material_line, trip_line, source_line = self.construction_panel.focus_material_summary()
+            if build_name == "Not selected":
+                self.thin_status_label.setText(
+                    "<b style='color:#F59E0B;'>NO FOCUS BUILD</b>"
+                    " &nbsp;│&nbsp; Choose one in Overview or Build Queue"
+                )
+            else:
+                self.thin_status_label.setText(
+                    f"<b style='color:#F59E0B;'>BUILD:</b> {build_name} "
+                    f"<span style='color:#9FB0BF;'>— {build_location}</span>"
+                    f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
+                    f" &nbsp;│&nbsp; {trip_line}"
+                    f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
+                )
             total = state.body_count if state.body_count is not None else "?"
             scanned = total if state.fss_complete and isinstance(total, int) else len([
                 body for body in state.bodies.values()
@@ -1653,9 +1707,13 @@ class OverlayWindow(QWidget):
             )
             self.construction_panel.set_construction_depots(state.construction_depots)
             plan = self.construction_panel.plan
+            tracked_system, locked = self.construction_panel.system_lock_state()
+            self.set_system_lock_button_style(locked)
             self.construction_goal_summary.setText(
-                f"<span style='color:#9FB0BF;'>System goal:</span> <b style='color:#F59E0B;'>{plan.primary_goal}</b><br>"
-                f"<span style='color:#9FB0BF;'>Secondary:</span> {plan.secondary_goal}"
+                f"<span style='color:#9FB0BF;'>Build system:</span> "
+                f"<b style='color:#60A5FA;'>{tracked_system}</b><br>"
+                f"<span style='color:#9FB0BF;'>Goal:</span> "
+                f"<b style='color:#F59E0B;'>{plan.primary_goal}</b>"
             )
         self.refresh_thin_view()
 
@@ -1672,10 +1730,11 @@ class OverlayWindow(QWidget):
         target = state.nav_target or "none"
         final = state.nav_final or "none"
 
-        self.update_info_card(self.system_card, "🌌", "System", system)
-        self.update_info_card(self.target_card, "➜", "Target", target)
-        self.update_info_card(self.final_card, "◆", "Final", final)
-        self.update_info_card(self.event_card, "✦", "Event", state.last_event or "?")
+        if not construction_mode:
+            self.update_info_card(self.system_card, "🌌", "System", system)
+            self.update_info_card(self.target_card, "➜", "Target", target)
+            self.update_info_card(self.final_card, "◆", "Final", final)
+            self.update_info_card(self.event_card, "✦", "Event", state.last_event or "?")
 
         ship = state.ship_name or friendly_ship_name(state.ship)
         mode = "On Foot" if state.on_foot else "In Ship"
@@ -1735,13 +1794,13 @@ class OverlayWindow(QWidget):
         )
 
         if construction_mode:
-            plan = self.construction_panel.plan
-            self.update_info_card(self.other_card, "✦", "Industrial CP", "0")
-            self.update_info_card(self.high_value_card, "◇", "Technology CP", "0")
-            self.update_info_card(self.bio_card, "⚒", "Active builds", f"{1 if plan.current_build != 'Not selected' else 0} / {plan.concurrent_limit}")
-            self.update_info_card(self.target_card, "⚑", "Phase", plan.phase)
-            self.update_info_card(self.final_card, "⚒", "Current Build", plan.current_build)
-            self.update_info_card(self.event_card, "📍", "Build Location", plan.current_location)
+            build_name, build_location = self.construction_panel.focus_build_display()
+            tracked_system, _locked = self.construction_panel.system_lock_state()
+            material_line, _trip_line, _source_line = self.construction_panel.focus_material_summary()
+            self.update_info_card(self.system_card, "🌌", "Current System", system)
+            self.update_info_card(self.target_card, "🔒", "Build System", tracked_system)
+            self.update_info_card(self.final_card, "📦", "Next Haul", material_line)
+            self.update_info_card(self.event_card, "📍", "Build Location", build_location)
         else:
             self.update_info_card(self.other_card, "✦", "Other scanned", str(other_scanned_count))
             self.update_info_card(self.high_value_card, "◇", "High-value", str(len(high_value_unmapped)))
