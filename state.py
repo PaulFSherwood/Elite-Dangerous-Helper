@@ -28,6 +28,11 @@ class BodyInfo:
 
     radius_m: Optional[float] = None
     surface_temp_k: Optional[float] = None
+    mass_em: Optional[float] = None
+    gravity_g: Optional[float] = None
+    atmosphere: str = ""
+    volcanism: str = ""
+    parents: list[dict] = field(default_factory=list)
 
     materials: dict[str, float] = field(default_factory=dict)
     rings: list[dict] = field(default_factory=list)
@@ -90,6 +95,9 @@ class CommanderState:
     # Sets prevent duplicate journal events from increasing the counters.
     held_exploration_systems: set[str] = field(default_factory=set)
     held_bio_samples: set[str] = field(default_factory=set)
+
+    construction_depots: dict[str, dict] = field(default_factory=dict)
+    latest_construction_depot_key: Optional[str] = None
 
     live_updates_enabled: bool = False
     seen_scan_body_ids: set[int] = field(default_factory=set)

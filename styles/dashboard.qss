@@ -310,3 +310,76 @@ QPushButton#modeToggleButton:hover {
     background-color: #253746;
     color: #FFFFFF;
 }
+
+/* Construction mode ----------------------------------------------------- */
+QTabWidget#constructionTabs::pane {
+    border: 1px solid #263A4A;
+    border-radius: 8px;
+    background: #0C1720;
+}
+QTabWidget#constructionTabs QTabBar::tab {
+    background: #101D27;
+    color: #D7E2EA;
+    border: 1px solid #263A4A;
+    padding: 7px 18px;
+    min-width: 105px;
+}
+QTabWidget#constructionTabs QTabBar::tab:selected {
+    color: #60A5FA;
+    border-bottom: 2px solid #60A5FA;
+    background: #132433;
+}
+QFrame#constructionBox {
+    background: #0A141C;
+    border: 1px solid #263A4A;
+    border-radius: 9px;
+}
+QLabel#constructionHeading {
+    color: #60A5FA;
+    font-weight: 700;
+    font-size: 13px;
+}
+QLabel#constructionBigValue {
+    color: #F59E0B;
+    font-weight: 700;
+    font-size: 15px;
+}
+QLabel#constructionLock, QLabel#constructionNotice {
+    color: #9FB0BF;
+}
+QPushButton#constructionEditButton {
+    color: #F59E0B;
+    border: 1px solid #8A6300;
+}
+QProgressBar {
+    border: 1px solid #263A4A;
+    border-radius: 5px;
+    background: #071019;
+    text-align: center;
+}
+QProgressBar::chunk {
+    background: #F59E0B;
+    border-radius: 4px;
+}
+
+/* Child containers used to swap Exploration and Construction content must
+   remain transparent so the existing rounded cards keep their background. */
+QStackedWidget,
+QStackedWidget > QWidget,
+QWidget#constructionGoalWidget,
+QWidget#explorationSearchWidget {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel#modeSelectorIcon {
+    background-color: transparent;
+    color: #F59E0B;
+    font-size: 20px;
+}
+
+QLabel#modeSelectorLabel {
+    background-color: transparent;
+    color: #9FB0BF;
+    font-size: 12px;
+}

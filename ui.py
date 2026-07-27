@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QComboBox,
     QButtonGroup,
+    QStackedWidget,
 )
 
 from journal import JournalMonitor
@@ -27,6 +28,7 @@ from rules import bio_key
 from bio_icons import bio_icon_html
 from ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
 from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description, evaluate_search_target
+from construction_ui import ConstructionPanel, PRIMARY_GOALS, SECONDARY_GOALS
 
 WINDOW_WIDTH = 1270
 WINDOW_HEIGHT = 715
@@ -46,7 +48,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v2.6.3"
+VERSION = "v2.7.7"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -503,8 +505,43 @@ class OverlayWindow(QWidget):
             QSizePolicy.Policy.Preferred,
         )
         
-        special_message_layout.addWidget(self.special_icon_label)
-        special_message_layout.addWidget(self.special_label)
+        # This panel is always the application mode selector.  Keeping the
+        # selector visible in both modes avoids trapping the user in Exploration.
+        self.app_mode_combo = QComboBox()
+        self.app_mode_combo.setObjectName("searchCombo")
+        self.app_mode_combo.addItems(["Exploration", "Construction"])
+        self.app_mode_combo.setMinimumWidth(130)
+
+        self.construction_view_combo = QComboBox()
+        self.construction_view_combo.setObjectName("searchCombo")
+        self.construction_view_combo.addItems(["Overview", "Sites", "Build Queue", "Materials"])
+        self.construction_view_combo.setMinimumWidth(125)
+
+        mode_icon = QLabel("⚒")
+        mode_icon.setObjectName("modeSelectorIcon")
+        mode_icon.setFixedWidth(28)
+        mode_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        mode_label = QLabel("Mode:")
+        mode_label.setObjectName("modeSelectorLabel")
+        view_label = QLabel("View:")
+        view_label.setObjectName("modeSelectorLabel")
+
+        mode_box = QVBoxLayout()
+        mode_box.setContentsMargins(0, 0, 0, 0)
+        mode_box.setSpacing(2)
+        mode_box.addWidget(mode_label)
+        mode_box.addWidget(self.app_mode_combo)
+
+        view_box = QVBoxLayout()
+        view_box.setContentsMargins(0, 0, 0, 0)
+        view_box.setSpacing(2)
+        view_box.addWidget(view_label)
+        view_box.addWidget(self.construction_view_combo)
+
+        special_message_layout.addWidget(mode_icon)
+        special_message_layout.addLayout(mode_box)
+        special_message_layout.addLayout(view_box)
 
         # Middle: dropdown card.
         search_select_card = QFrame()
@@ -517,9 +554,28 @@ class OverlayWindow(QWidget):
         search_select_title = QLabel("Looking for:")
         search_select_title.setObjectName("searchCardTitle")
 
-        search_select_layout.addWidget(search_select_title)
-        search_select_layout.addWidget(self.search_type_combo)
-        search_select_layout.addWidget(self.search_item_combo)
+        self.exploration_search_widget = QWidget()
+        self.exploration_search_widget.setObjectName("explorationSearchWidget")
+        exploration_search_layout = QHBoxLayout(self.exploration_search_widget)
+        exploration_search_layout.setContentsMargins(0, 0, 0, 0)
+        exploration_search_layout.setSpacing(8)
+        exploration_search_layout.addWidget(search_select_title)
+        exploration_search_layout.addWidget(self.search_type_combo)
+        exploration_search_layout.addWidget(self.search_item_combo)
+
+        self.construction_goal_widget = QWidget()
+        self.construction_goal_widget.setObjectName("constructionGoalWidget")
+        construction_goal_layout = QHBoxLayout(self.construction_goal_widget)
+        construction_goal_layout.setContentsMargins(0, 0, 0, 0)
+        self.construction_goal_summary = QLabel("System goal: Balanced Colony<br>Secondary: None")
+        self.construction_goal_summary.setTextFormat(Qt.TextFormat.RichText)
+        construction_goal_layout.addWidget(self.construction_goal_summary)
+        construction_goal_layout.addStretch()
+
+        self.search_select_stack = QStackedWidget()
+        self.search_select_stack.addWidget(self.exploration_search_widget)
+        self.search_select_stack.addWidget(self.construction_goal_widget)
+        search_select_layout.addWidget(self.search_select_stack)
 
         # Right side: rules card.
         self.search_rules_card = QFrame()
@@ -528,7 +584,12 @@ class OverlayWindow(QWidget):
         search_rules_layout = QVBoxLayout(self.search_rules_card)
         search_rules_layout.setContentsMargins(12, 6, 12, 6)
         search_rules_layout.setSpacing(2)
-        search_rules_layout.addWidget(self.search_rules_label)
+        self.construction_status_label = QLabel("Current build<br><b>Not selected</b>")
+        self.construction_status_label.setTextFormat(Qt.TextFormat.RichText)
+        self.search_rules_stack = QStackedWidget()
+        self.search_rules_stack.addWidget(self.search_rules_label)
+        self.search_rules_stack.addWidget(self.construction_status_label)
+        search_rules_layout.addWidget(self.search_rules_stack)
 
         # Full special/search row.
         special_layout.addWidget(special_message_card, stretch=1)
@@ -542,6 +603,8 @@ class OverlayWindow(QWidget):
         # Populate the second dropdown based on the first dropdown,
         # then evaluate the selected search target against already-loaded journal history.
         self.update_search_item_dropdown()
+        self.app_mode_combo.currentTextChanged.connect(self.set_app_mode)
+        self.construction_view_combo.currentTextChanged.connect(self.set_construction_view)
 
         # ------------------------------------------------------------------
         # 3. Route/system row widgets
@@ -553,9 +616,9 @@ class OverlayWindow(QWidget):
         # top_row holds route_card plus the opacity toggle button.
         # ------------------------------------------------------------------
 
-        self.opacity_button = QPushButton("●\n│\n○")
+        self.opacity_button = QPushButton("Opacity\n◐")
         self.opacity_button.setToolTip("Toggle transparency / solid")
-        self.opacity_button.setFixedSize(28, 58)
+        self.opacity_button.setFixedSize(68, 58)
         self.opacity_button.clicked.connect(self.toggle_opacity)
         self.opacity_button.setObjectName("opacityButton")
 
@@ -764,6 +827,14 @@ class OverlayWindow(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(34)
 
+        self.construction_panel = ConstructionPanel(self.settings)
+        self.construction_panel.current_build_changed.connect(self.on_current_build_changed)
+        self.construction_panel.tabs.currentChanged.connect(self.sync_construction_view_combo)
+
+        self.main_stack = QStackedWidget()
+        self.main_stack.addWidget(table_card)
+        self.main_stack.addWidget(self.construction_panel)
+
         # ------------------------------------------------------------------
         # 6. Bottom row widgets
         #
@@ -831,9 +902,12 @@ class OverlayWindow(QWidget):
         legend_layout.addWidget(self.legend_label)
 
         bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(ROW_SPACING)
         bottom_row.addWidget(log_card, stretch=2)
         bottom_row.addWidget(legend_card, stretch=1)
+        self.bottom_widget = QWidget()
+        self.bottom_widget.setLayout(bottom_row)
 
         # ------------------------------------------------------------------
         # 7. Footer
@@ -893,8 +967,8 @@ class OverlayWindow(QWidget):
         layout.setSpacing(HEADER_SPACING)
 
         layout.addLayout(header)
-        layout.addWidget(table_card, stretch=1)
-        layout.addLayout(bottom_row, stretch=0)
+        layout.addWidget(self.main_stack, stretch=1)
+        layout.addWidget(self.bottom_widget, stretch=0)
 
         footer_row = QHBoxLayout()
         footer_row.setContentsMargins(0, 0, 0, 0)
@@ -975,9 +1049,45 @@ class OverlayWindow(QWidget):
         self.monitor.updated.connect(self.refresh)
         self.refresh()
 
+        saved_app_mode = str(self.settings.value("app_mode", "Exploration"))
+        if saved_app_mode not in ("Exploration", "Construction"):
+            saved_app_mode = "Exploration"
+        self.app_mode_combo.setCurrentText(saved_app_mode)
+        self.set_app_mode(saved_app_mode)
+
         saved_mode = self.settings.value("thin_mode", False, type=bool)
         if saved_mode:
             self.set_view_mode(True)
+
+    def set_app_mode(self, mode: str) -> None:
+        construction = mode == "Construction"
+        self.search_select_stack.setCurrentIndex(1 if construction else 0)
+        self.search_rules_stack.setCurrentIndex(1 if construction else 0)
+        self.main_stack.setCurrentIndex(1 if construction else 0)
+        self.bottom_widget.setVisible(not construction)
+        self.construction_view_combo.setEnabled(construction)
+        self.settings.setValue("app_mode", mode)
+        if construction:
+            self.construction_panel.set_system(self.monitor.state.system or "Unknown system")
+            self.set_construction_view(self.construction_view_combo.currentText())
+        self.refresh()
+
+    def set_construction_view(self, view: str) -> None:
+        if hasattr(self, "construction_panel"):
+            self.construction_panel.set_view_name(view)
+
+    def sync_construction_view_combo(self, _index: int) -> None:
+        name = self.construction_panel.view_name()
+        if self.construction_view_combo.currentText() != name:
+            self.construction_view_combo.blockSignals(True)
+            self.construction_view_combo.setCurrentText(name)
+            self.construction_view_combo.blockSignals(False)
+
+    def on_current_build_changed(self, facility: str, location: str) -> None:
+        self.construction_status_label.setText(
+            f"<span style='color:#60A5FA;'>Current build</span><br>"
+            f"<b>{facility}</b><br><span style='color:#9FB0BF;'>{location}</span>"
+        )
 
     def toggle_view_mode(self) -> None:
         self.set_view_mode(not self.thin_mode)
@@ -1104,6 +1214,25 @@ class OverlayWindow(QWidget):
 
         state = self.monitor.state
         system = state.system or "Unknown system"
+        if hasattr(self, "app_mode_combo") and self.app_mode_combo.currentText() == "Construction":
+            plan = self.construction_panel.plan
+            self.thin_system_label.setText(system)
+            material_line, trip_line, source_line = self.construction_panel.focus_material_summary()
+            self.thin_status_label.setText(
+                f"<b style='color:#F59E0B;'>BUILD:</b> {plan.current_build} "
+                f"<span style='color:#9FB0BF;'>— {plan.current_location}</span>"
+                f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
+                f" &nbsp;│&nbsp; {trip_line}"
+                f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
+            )
+            total = state.body_count if state.body_count is not None else "?"
+            scanned = total if state.fss_complete and isinstance(total, int) else len([
+                body for body in state.bodies.values()
+                if body.scanned and body.kind in ("Planet", "Star")
+            ])
+            mark = " ✓" if state.fss_complete else ""
+            self.thin_held_data_label.setText(f"FSS {scanned}/{total}{mark}")
+            return
         self.thin_system_label.setText(system)
         self.thin_held_data_label.setText(
             f"★ {len(state.held_exploration_systems)}"
@@ -1410,10 +1539,10 @@ class OverlayWindow(QWidget):
 
         if self.opacity_enabled:
             self.setWindowOpacity(self.normal_opacity)
-            self.opacity_button.setText("●\n│\n○")
+            self.opacity_button.setText("Opacity\n◐")
         else:
             self.setWindowOpacity(self.solid_opacity)
-            self.opacity_button.setText("○\n│\n●")
+            self.opacity_button.setText("Solid\n●")
 
     def update_search_rules_from_bodies(self, bodies: list[BodyInfo]) -> None:
         search_type = self.search_type_combo.currentText()
@@ -1516,6 +1645,18 @@ class OverlayWindow(QWidget):
 
     def refresh(self) -> None:
         state = self.monitor.state
+        construction_mode = hasattr(self, "app_mode_combo") and self.app_mode_combo.currentText() == "Construction"
+        if construction_mode:
+            self.construction_panel.set_system_data(
+                state.system or "Unknown system",
+                state.bodies,
+            )
+            self.construction_panel.set_construction_depots(state.construction_depots)
+            plan = self.construction_panel.plan
+            self.construction_goal_summary.setText(
+                f"<span style='color:#9FB0BF;'>System goal:</span> <b style='color:#F59E0B;'>{plan.primary_goal}</b><br>"
+                f"<span style='color:#9FB0BF;'>Secondary:</span> {plan.secondary_goal}"
+            )
         self.refresh_thin_view()
 
         if state.special_alerts:
@@ -1584,33 +1725,27 @@ class OverlayWindow(QWidget):
         if other_scanned_count > 0:
             other_text = f"    Other scanned: {other_scanned_count}"
 
+        displayed_scanned = total if state.fss_complete and isinstance(total, int) else planet_star_scanned_count
+        complete_mark = " ✓" if state.fss_complete else ""
         self.update_info_card(
             self.bodies_card,
             "◎",
-            "Bodies",
-            f"{planet_star_scanned_count} / {total}",
+            "Bodies (FSS)" if construction_mode else "Bodies",
+            f"{displayed_scanned} / {total}{complete_mark}",
         )
-        
-        self.update_info_card(
-            self.other_card,
-            "✦",
-            "Other scanned",
-            str(other_scanned_count),
-        )
-        
-        self.update_info_card(
-            self.high_value_card,
-            "◇",
-            "High-value",
-            str(len(high_value_unmapped)),
-        )
-        
-        self.update_info_card(
-            self.bio_card,
-            "☘",
-            "Bio bodies",
-            str(len(bio_bodies)),
-        )
+
+        if construction_mode:
+            plan = self.construction_panel.plan
+            self.update_info_card(self.other_card, "✦", "Industrial CP", "0")
+            self.update_info_card(self.high_value_card, "◇", "Technology CP", "0")
+            self.update_info_card(self.bio_card, "⚒", "Active builds", f"{1 if plan.current_build != 'Not selected' else 0} / {plan.concurrent_limit}")
+            self.update_info_card(self.target_card, "⚑", "Phase", plan.phase)
+            self.update_info_card(self.final_card, "⚒", "Current Build", plan.current_build)
+            self.update_info_card(self.event_card, "📍", "Build Location", plan.current_location)
+        else:
+            self.update_info_card(self.other_card, "✦", "Other scanned", str(other_scanned_count))
+            self.update_info_card(self.high_value_card, "◇", "High-value", str(len(high_value_unmapped)))
+            self.update_info_card(self.bio_card, "☘", "Bio bodies", str(len(bio_bodies)))
 
         def body_sort_key(b: BodyInfo):
             high_value_unmapped = self.is_high_value_world(b) and b.mapped is not True

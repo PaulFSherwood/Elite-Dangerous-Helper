@@ -1,0 +1,843 @@
+{
+  "schema_version": 1,
+  "notes": "Initial player-verified seed for Elite Dangerous system colonisation planning. Values marked player_note or unverified should be checked in game before treating the plan as authoritative.",
+  "facilities": [
+    {
+      "id": "primary_port",
+      "name": "Primary Port",
+      "facility_type": "Primary Port",
+      "category": "Starter Port",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "System Economy",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "known_required_first"
+      },
+      "notes": "The first completed port for an established colony. Existing systems should mark this complete instead of queueing another primary port."
+    },
+    {
+      "id": "planetary_outpost_hephaestus",
+      "name": "Hephaestus",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3",
+        "materials_status": "observed_inara_2026_07_26"
+      },
+      "notes": "Market links to Genesis Industrial per player observation. Material requirements seeded from the Alvarez Works construction depot observed in Nyeakua GG-D b4-1; confirm against live journal when possible.",
+      "materials": [
+        {
+          "commodity": "Aluminium",
+          "required": 7047
+        },
+        {
+          "commodity": "Building Fabricators",
+          "required": 407
+        },
+        {
+          "commodity": "Ceramic Composites",
+          "required": 814
+        },
+        {
+          "commodity": "CMM Composite",
+          "required": 6776
+        },
+        {
+          "commodity": "Computer Components",
+          "required": 102
+        },
+        {
+          "commodity": "Copper",
+          "required": 407
+        },
+        {
+          "commodity": "Emergency Power Cells",
+          "required": 68
+        },
+        {
+          "commodity": "Evacuation Shelter",
+          "required": 204
+        },
+        {
+          "commodity": "Food Cartridges",
+          "required": 136
+        },
+        {
+          "commodity": "Fruit and Vegetables",
+          "required": 95
+        },
+        {
+          "commodity": "Land Enrichment Systems",
+          "required": 68
+        },
+        {
+          "commodity": "Liquid oxygen",
+          "required": 2372
+        },
+        {
+          "commodity": "Medical Diagnostic Equipment",
+          "required": 48
+        },
+        {
+          "commodity": "Non-Lethal Weapons",
+          "required": 34
+        },
+        {
+          "commodity": "Polymers",
+          "required": 678
+        },
+        {
+          "commodity": "Power Generators",
+          "required": 68
+        },
+        {
+          "commodity": "Semiconductors",
+          "required": 102
+        },
+        {
+          "commodity": "Steel",
+          "required": 10164
+        },
+        {
+          "commodity": "Structural Regulators",
+          "required": 678
+        },
+        {
+          "commodity": "Superconductors",
+          "required": 136
+        },
+        {
+          "commodity": "Surface Stabilisers",
+          "required": 610
+        },
+        {
+          "commodity": "Survival Equipment",
+          "required": 55
+        },
+        {
+          "commodity": "Titanium",
+          "required": 5760
+        }
+      ]
+    },
+    {
+      "id": "planetary_outpost_opis",
+      "name": "Opis",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis Industrial per player observation."
+    },
+    {
+      "id": "planetary_outpost_ponos",
+      "name": "Ponos",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis Industrial per player observation."
+    },
+    {
+      "id": "planetary_outpost_tethys",
+      "name": "Tethys",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis Industrial per player observation."
+    },
+    {
+      "id": "planetary_outpost_bia",
+      "name": "Bia",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis Industrial per player observation."
+    },
+    {
+      "id": "planetary_outpost_mefitis",
+      "name": "Mefitis",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis Industrial per player observation."
+    },
+    {
+      "id": "planetary_outpost_hestia",
+      "name": "Hestia",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost."
+    },
+    {
+      "id": "planetary_outpost_necessitas",
+      "name": "Necessitas",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Market links to Genesis High Tech per player observation."
+    },
+    {
+      "id": "extraction_hub_tartarus",
+      "name": "Tartarus",
+      "facility_type": "Hub",
+      "category": "Extraction",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Player noted that Extraction Hub Tartarus gives Tier 3 construction points. Exact requirement still needs confirmation."
+    },
+    {
+      "id": "tier3_port_zeus",
+      "name": "Zeus",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "Unknown",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 6
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Player observed Zeus appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+    },
+    {
+      "id": "tier3_port_hera",
+      "name": "Hera",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "Unknown",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 6
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Player observed Hera appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+    },
+    {
+      "id": "planetary_outpost_decima",
+      "name": "Decima",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
+    },
+    {
+      "id": "planetary_outpost_atropos",
+      "name": "Atropos",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
+    },
+    {
+      "id": "planetary_outpost_nona",
+      "name": "Nona",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
+    },
+    {
+      "id": "planetary_outpost_lachesis",
+      "name": "Lachesis",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
+    },
+    {
+      "id": "planetary_outpost_clotho",
+      "name": "Clotho",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
+    },
+    {
+      "id": "planetary_outpost_ananke",
+      "name": "Ananke",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
+    },
+    {
+      "id": "planetary_outpost_fauna",
+      "name": "Fauna",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
+    },
+    {
+      "id": "planetary_outpost_providentia",
+      "name": "Providentia",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
+    },
+    {
+      "id": "planetary_outpost_antevorta",
+      "name": "Antevorta",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
+    },
+    {
+      "id": "planetary_outpost_porrima",
+      "name": "Porrima",
+      "facility_type": "Planetary Port",
+      "category": "Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
+    },
+    {
+      "id": "tier3_port_poseidon",
+      "name": "Poseidon",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "Unknown",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 6
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Player observed Poseidon appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+    },
+    {
+      "id": "tier3_port_aphrodite",
+      "name": "Aphrodite",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "Unknown",
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 6
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_note",
+        "game_version": "4.4.0.3"
+      },
+      "notes": "Player observed Aphrodite appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+    }
+  ],
+  "goals": {
+    "Expansion Materials Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial Tier 1 planetary outpost; adds +1 Tier 2 point and supports construction-material production."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Extraction hub path toward Tier 3 points for larger ports and deeper build-out."
+      },
+      {
+        "facility_id": "planetary_outpost_opis",
+        "reason": "Second Industrial Tier 1 outpost to grow industrial capacity and market linking."
+      },
+      {
+        "facility_id": "tier3_port_zeus",
+        "reason": "Tier 3 planetary port candidate once enough Tier 3 points exist."
+      }
+    ],
+    "Industrial Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial Tier 1 planetary outpost; adds +1 Tier 2 point."
+      },
+      {
+        "facility_id": "planetary_outpost_opis",
+        "reason": "Additional Industrial capacity and market linking."
+      },
+      {
+        "facility_id": "planetary_outpost_ponos",
+        "reason": "Additional Industrial capacity and market linking."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Adds Extraction support and begins Tier 3 point progression."
+      }
+    ],
+    "Mining and Refinery Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Extraction hub candidate; player noted it provides Tier 3 construction points."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial outpost to support refining and construction supply chains."
+      }
+    ],
+    "Research and Technology Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_necessitas",
+        "reason": "Scientific Tier 1 planetary outpost; adds +1 Tier 2 point and links to Genesis High Tech."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Builds toward Tier 3 points required by larger facilities."
+      }
+    ],
+    "Balanced Colony": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hestia",
+        "reason": "Civilian Tier 1 outpost; adds +1 Tier 2 point."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial Tier 1 outpost; adds +1 Tier 2 point."
+      },
+      {
+        "facility_id": "planetary_outpost_necessitas",
+        "reason": "Scientific Tier 1 outpost; adds +1 Tier 2 point."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Adds Extraction support and Tier 3 point progression."
+      }
+    ],
+    "Tritium Production Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Extraction hub candidate for a resource-focused system and Tier 3 point progression."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial support for resource movement and construction supplies."
+      }
+    ],
+    "Carrier Support Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial support for carrier supply and repair/refit economy goals."
+      },
+      {
+        "facility_id": "extraction_hub_tartarus",
+        "reason": "Resource support and Tier 3 point progression."
+      }
+    ],
+    "Agricultural Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hestia",
+        "reason": "Civilian Tier 1 outpost seed until agriculture-specific layouts are added."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial support for colony supply movement."
+      }
+    ],
+    "Tourism Hub": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hestia",
+        "reason": "Civilian Tier 1 outpost seed until tourism-specific layouts are added."
+      },
+      {
+        "facility_id": "planetary_outpost_necessitas",
+        "reason": "Scientific support and construction-point growth."
+      }
+    ],
+    "Population Center": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+      },
+      {
+        "facility_id": "planetary_outpost_hestia",
+        "reason": "Civilian Tier 1 outpost; adds +1 Tier 2 point."
+      },
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial support for workforce supply chain."
+      }
+    ],
+    "Custom Plan": []
+  }
+}

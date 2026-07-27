@@ -47,6 +47,8 @@ HELD_EXPLORATION_KEY = "held_data/exploration_systems"
 HELD_BIO_KEY = "held_data/bio_samples"
 FSS_COMPLETED_KEY = "fss/completed_systems"
 FSS_INDEXED_FILES_KEY = "fss/indexed_files"
+CONSTRUCTION_BODY_INDEX_KEY = "construction/body_index"
+CONSTRUCTION_BODY_INDEXED_FILES_KEY = "construction/body_indexed_files"
 
 
 def _settings_string_set(settings: QSettings, key: str) -> set[str]:
@@ -276,6 +278,182 @@ def index_fss_history(
         settings.sync()
 
     return files_scanned, completion_keys_added
+
+
+
+def _body_to_json(body: BodyInfo) -> dict:
+    """Serialize the journal fields needed by the construction Sites view."""
+    return {
+        "name": body.name,
+        "body_id": body.body_id,
+        "kind": body.kind,
+        "subtype": body.subtype,
+        "distance_ls": body.distance_ls,
+        "landable": body.landable,
+        "mapped": body.mapped,
+        "scanned": body.scanned,
+        "terraform_state": body.terraform_state,
+        "radius_m": body.radius_m,
+        "surface_temp_k": body.surface_temp_k,
+        "materials": body.materials,
+        "rings": body.rings,
+    }
+
+
+def _body_from_json(data: dict) -> Optional[BodyInfo]:
+    if not isinstance(data, dict) or not data.get("name"):
+        return None
+    allowed = {
+        key: data[key]
+        for key in BodyInfo.__dataclass_fields__
+        if key in data
+    }
+    try:
+        return BodyInfo(**allowed)
+    except TypeError:
+        return None
+
+
+def load_construction_body_index(state: CommanderState, settings: QSettings) -> None:
+    """Restore the full-history system/body index used by Construction mode."""
+    raw = _settings_json_dict(settings, CONSTRUCTION_BODY_INDEX_KEY)
+    for system_key, rows in raw.items():
+        if not isinstance(system_key, str) or not isinstance(rows, dict):
+            continue
+        bodies: dict[str, BodyInfo] = {}
+        for body_name, body_data in rows.items():
+            body = _body_from_json(body_data)
+            if body is not None:
+                bodies[str(body_name)] = body
+        if bodies:
+            state.system_body_cache[system_key] = bodies
+
+
+def save_construction_body_index(state: CommanderState, settings: QSettings) -> None:
+    payload = {
+        system_key: {
+            body_name: _body_to_json(body)
+            for body_name, body in bodies.items()
+        }
+        for system_key, bodies in state.system_body_cache.items()
+        if bodies
+    }
+    settings.setValue(
+        CONSTRUCTION_BODY_INDEX_KEY,
+        json.dumps(payload, sort_keys=True),
+    )
+    settings.sync()
+
+
+def _scan_body_history_file(state: CommanderState, journal_path: Path) -> int:
+    """Index every scanned star, planet, moon, and belt-like body in a journal."""
+    added = 0
+    with journal_path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if '"event":"Scan"' not in line and '"event": "Scan"' not in line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("event") != "Scan":
+                continue
+            body_name = event.get("BodyName")
+            address = event.get("SystemAddress")
+            system = event.get("StarSystem")
+            if not body_name or (address is None and not system):
+                continue
+
+            if event.get("StarType") is not None:
+                kind = "Star"
+                subtype = event.get("StarType") or "Unknown star"
+            elif event.get("PlanetClass") is not None:
+                kind = "Planet"
+                subtype = event.get("PlanetClass") or "Unknown planet"
+            else:
+                # Keep unusual scan bodies too. This gives Construction mode a
+                # chance to show belt clusters or future body types rather than
+                # silently dropping them.
+                kind = "Body"
+                subtype = event.get("BodyType") or "Unknown"
+
+            body = BodyInfo(
+                name=body_name,
+                body_id=event.get("BodyID"),
+                kind=kind,
+                subtype=subtype,
+                distance_ls=event.get("DistanceFromArrivalLS"),
+                landable=event.get("Landable"),
+                mapped=event.get("WasMapped"),
+                scanned=True,
+                terraform_state=event.get("TerraformState", ""),
+                radius_m=event.get("Radius"),
+                surface_temp_k=event.get("SurfaceTemperature"),
+                mass_em=event.get("MassEM"),
+                gravity_g=(event.get("SurfaceGravity") / 9.80665) if event.get("SurfaceGravity") is not None else None,
+                atmosphere=event.get("Atmosphere") or event.get("AtmosphereType") or "",
+                volcanism=event.get("Volcanism") or "",
+                parents=event.get("Parents", []),
+                materials={
+                    str(row.get("Name", "")).lower(): row.get("Percent")
+                    for row in event.get("Materials", [])
+                    if row.get("Name") and row.get("Percent") is not None
+                },
+                rings=event.get("Rings", []),
+            )
+
+            for key in system_cache_keys(system, address):
+                bodies = state.system_body_cache.setdefault(key, {})
+                if body_name not in bodies:
+                    added += 1
+                bodies[body_name] = body
+    return added
+
+
+def index_construction_body_history(
+    state: CommanderState,
+    settings: QSettings,
+    journal_dir: Path,
+) -> tuple[int, int]:
+    """Incrementally build a persistent all-journal body index.
+
+    Exploration may intentionally load only recent journal files. Construction
+    cannot do that: its Sites view must show every known body in the selected
+    system, including bodies scanned months earlier.
+    """
+    indexed_files = _settings_json_dict(
+        settings,
+        CONSTRUCTION_BODY_INDEXED_FILES_KEY,
+    )
+    files_scanned = 0
+    bodies_added = 0
+
+    journals = sorted(
+        journal_dir.glob("Journal*.log"),
+        key=lambda path: path.stat().st_mtime,
+    )
+    for journal_path in journals:
+        try:
+            stat = journal_path.stat()
+        except OSError:
+            continue
+        signature = f"{stat.st_size}:{stat.st_mtime_ns}"
+        if indexed_files.get(journal_path.name) == signature:
+            continue
+        try:
+            bodies_added += _scan_body_history_file(state, journal_path)
+        except OSError:
+            continue
+        indexed_files[journal_path.name] = signature
+        files_scanned += 1
+
+    if files_scanned:
+        settings.setValue(
+            CONSTRUCTION_BODY_INDEXED_FILES_KEY,
+            json.dumps(indexed_files, sort_keys=True),
+        )
+        save_construction_body_index(state, settings)
+    return files_scanned, bodies_added
 
 
 def resolve_journal_dir(user_path: Optional[str]) -> Path:
@@ -532,6 +710,49 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         )
         state.log("All bodies found by FSS")
         changed = True
+
+
+    elif name == "ColonisationConstructionDepot":
+        market_id = event.get("MarketID")
+        resources = []
+        for row in event.get("ResourcesRequired", []) or []:
+            commodity = (
+                row.get("Name_Localised")
+                or str(row.get("Name", "")).replace("$", "").replace("_name;", "").replace(";", "").title()
+            )
+            try:
+                required = int(row.get("RequiredAmount", 0) or 0)
+                delivered = int(row.get("ProvidedAmount", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if not commodity or required <= 0:
+                continue
+            resources.append({
+                "commodity": commodity,
+                "required": required,
+                "delivered": delivered,
+                "carrier": 0,
+                "source": "Journal depot",
+                "payment": row.get("Payment"),
+            })
+
+        if market_id is not None and resources:
+            key = str(market_id)
+            state.construction_depots[key] = {
+                "market_id": key,
+                "system": state.system,
+                "system_address": state.system_address,
+                "station": state.station or "Construction depot",
+                "body": state.body or "Unknown body",
+                "timestamp": event.get("timestamp"),
+                "progress": event.get("ConstructionProgress"),
+                "complete": bool(event.get("ConstructionComplete", False)),
+                "failed": bool(event.get("ConstructionFailed", False)),
+                "resources": resources,
+            }
+            state.latest_construction_depot_key = key
+            state.log(f"Construction depot updated: {len(resources)} commodities")
+            changed = True
 
     elif name == "Scan":
         if state.live_updates_enabled:
@@ -870,6 +1091,7 @@ class JournalMonitor(QObject):
         self.state = CommanderState()
         load_held_data(self.state, self.settings)
         load_fss_data(self.state, self.settings)
+        load_construction_body_index(self.state, self.settings)
         # self.db = connect_db()
         # init_db(self.db)
         self.current_file: Optional[Path] = None
@@ -893,10 +1115,20 @@ class JournalMonitor(QObject):
             self.settings,
             self.journal_dir,
         )
+        body_files_indexed, bodies_added = index_construction_body_history(
+            self.state,
+            self.settings,
+            self.journal_dir,
+        )
         if files_indexed:
             self.state.log(
                 f"FSS history indexed: {files_indexed} files, "
                 f"{completion_keys_added} completion keys added"
+            )
+        if body_files_indexed:
+            self.state.log(
+                f"Construction body index: {body_files_indexed} files, "
+                f"{bodies_added} bodies added"
             )
 
         journals_to_read = journals[-self.history_files:]
