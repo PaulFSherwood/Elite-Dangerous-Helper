@@ -48,7 +48,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.0.0"
+VERSION = "v3.0.2"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -843,6 +843,9 @@ class OverlayWindow(QWidget):
         self.construction_panel = ConstructionPanel(self.settings)
         self.construction_panel.current_build_changed.connect(self.on_current_build_changed)
         self.construction_panel.system_lock_changed.connect(self.on_construction_system_lock_changed)
+        self.construction_panel.carrier_empty_baseline_requested.connect(
+            self.on_carrier_empty_baseline_requested
+        )
         self.construction_panel.tabs.currentChanged.connect(self.sync_construction_view_combo)
 
         self.main_stack = QStackedWidget()
@@ -1100,6 +1103,11 @@ class OverlayWindow(QWidget):
             self.construction_view_combo.blockSignals(True)
             self.construction_view_combo.setCurrentText(name)
             self.construction_view_combo.blockSignals(False)
+
+    def on_carrier_empty_baseline_requested(self, commodities: object) -> None:
+        names = list(commodities) if isinstance(commodities, (list, tuple, set)) else []
+        self.monitor.set_carrier_empty_baseline(names)
+        self.refresh()
 
     def on_current_build_changed(self, facility: str, location: str) -> None:
         self.construction_status_label.setText(
@@ -1704,6 +1712,14 @@ class OverlayWindow(QWidget):
             self.construction_panel.set_system_data(
                 state.system or "Unknown system",
                 state.bodies,
+            )
+            self.construction_panel.set_logistics_data(
+                state.ship_inventory,
+                state.ship_inventory_known,
+                state.carrier_inventory,
+                state.carrier_inventory_known,
+                state.carrier_known_commodities,
+                state.market_sources,
             )
             self.construction_panel.set_construction_depots(state.construction_depots)
             plan = self.construction_panel.plan

@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 from typing import Optional
+
+def commodity_key(name: object) -> str:
+    """Return a stable key shared by journal/internal and localized commodity names."""
+    text = str(name or "").strip().lower()
+    if text.startswith("$") and text.endswith(";"):
+        text = text[1:-1]
+    text = text.replace("_name", "")
+    return re.sub(r"[^a-z0-9]", "", text)
 
 
 @dataclass
@@ -98,6 +107,20 @@ class CommanderState:
 
     construction_depots: dict[str, dict] = field(default_factory=dict)
     latest_construction_depot_key: Optional[str] = None
+
+    # Construction logistics learned from Elite's local files/journal.
+    # Cargo.json is authoritative for current ship cargo. Carrier cargo has no
+    # equivalent local snapshot, so it is tracked from a user-established
+    # baseline plus CargoTransfer journal deltas.
+    ship_inventory: dict[str, int] = field(default_factory=dict)
+    ship_inventory_known: bool = False
+    carrier_inventory: dict[str, int] = field(default_factory=dict)
+    carrier_inventory_known: bool = False
+    carrier_known_commodities: set[str] = field(default_factory=set)
+    carrier_last_event_timestamp: str = ""
+    carrier_last_event_fingerprint: str = ""
+    owned_carrier_id: Optional[int] = None
+    market_sources: dict[str, str] = field(default_factory=dict)
 
     live_updates_enabled: bool = False
     seen_scan_body_ids: set[int] = field(default_factory=set)

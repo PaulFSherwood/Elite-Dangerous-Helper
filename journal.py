@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from datetime import datetime, timezone
 # from db import connect_db, init_db, save_state_snapshot, save_first_footfall
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,7 @@ from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 from state import (
     BodyInfo,
     CommanderState,
+    commodity_key,
     cache_current_system,
     restore_cached_system,
     system_cache_keys,
@@ -49,7 +51,360 @@ FSS_COMPLETED_KEY = "fss/completed_systems"
 FSS_INDEXED_FILES_KEY = "fss/indexed_files"
 CONSTRUCTION_BODY_INDEX_KEY = "construction/body_index"
 CONSTRUCTION_BODY_INDEXED_FILES_KEY = "construction/body_indexed_files"
+CARRIER_INVENTORY_KEY = "construction/carrier_inventory"
+CARRIER_INVENTORY_KNOWN_KEY = "construction/carrier_inventory_known"
+CARRIER_KNOWN_COMMODITIES_KEY = "construction/carrier_known_commodities"
+CARRIER_LAST_EVENT_TIMESTAMP_KEY = "construction/carrier_last_event_timestamp"
+CARRIER_LAST_EVENT_FINGERPRINT_KEY = "construction/carrier_last_event_fingerprint"
+CARRIER_TRACKING_VERSION_KEY = "construction/carrier_tracking_version"
+CARRIER_TRACKING_VERSION = 2
+OWNED_CARRIER_ID_KEY = "construction/owned_carrier_id"
+MARKET_SOURCES_KEY = "construction/market_sources"
 
+
+def _settings_int_dict(settings: QSettings, key: str) -> dict[str, int]:
+    raw = _settings_json_dict(settings, key)
+    result: dict[str, int] = {}
+    for name, count in raw.items():
+        commodity = commodity_key(name)
+        if not commodity:
+            continue
+        try:
+            result[commodity] = max(0, int(count))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _settings_string_list(settings: QSettings, key: str) -> set[str]:
+    raw = settings.value(key, "[]")
+    try:
+        values = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return set()
+    if not isinstance(values, list):
+        return set()
+    result: set[str] = set()
+    for value in values:
+        if str(value) == "*":
+            result.add("*")
+            continue
+        key = commodity_key(value)
+        if key:
+            result.add(key)
+    return result
+
+
+def load_logistics_data(state: CommanderState, settings: QSettings) -> None:
+    """Load persisted logistics without trusting v3.0.1's guessed carrier data."""
+    state.ship_inventory = {}
+    state.ship_inventory_known = False
+
+    try:
+        tracking_version = int(settings.value(CARRIER_TRACKING_VERSION_KEY, 0) or 0)
+    except (TypeError, ValueError):
+        tracking_version = 0
+
+    if tracking_version == CARRIER_TRACKING_VERSION:
+        state.carrier_inventory = _settings_int_dict(settings, CARRIER_INVENTORY_KEY)
+        state.carrier_known_commodities = _settings_string_list(
+            settings, CARRIER_KNOWN_COMMODITIES_KEY
+        )
+        state.carrier_inventory_known = bool(state.carrier_known_commodities)
+        state.carrier_last_event_timestamp = str(
+            settings.value(CARRIER_LAST_EVENT_TIMESTAMP_KEY, "") or ""
+        )
+        state.carrier_last_event_fingerprint = str(
+            settings.value(CARRIER_LAST_EVENT_FINGERPRINT_KEY, "") or ""
+        )
+    else:
+        # v3.0.1 reconstructed missing history as if the carrier had started at
+        # zero, which can create phantom cargo. Require a fresh baseline once.
+        state.carrier_inventory = {}
+        state.carrier_known_commodities = set()
+        state.carrier_inventory_known = False
+        state.carrier_last_event_timestamp = ""
+        state.carrier_last_event_fingerprint = ""
+
+    raw_carrier_id = settings.value(OWNED_CARRIER_ID_KEY, "")
+    try:
+        state.owned_carrier_id = int(raw_carrier_id) if str(raw_carrier_id).strip() else None
+    except (TypeError, ValueError):
+        state.owned_carrier_id = None
+
+    raw_sources = _settings_json_dict(settings, MARKET_SOURCES_KEY)
+    state.market_sources = {
+        commodity_key(name): str(location).strip()
+        for name, location in raw_sources.items()
+        if commodity_key(name) and str(location).strip()
+    }
+
+
+def save_logistics_data(state: CommanderState, settings: QSettings) -> None:
+    settings.setValue(CARRIER_TRACKING_VERSION_KEY, CARRIER_TRACKING_VERSION)
+    settings.setValue(
+        CARRIER_INVENTORY_KEY,
+        json.dumps(state.carrier_inventory, sort_keys=True),
+    )
+    settings.setValue(
+        CARRIER_INVENTORY_KNOWN_KEY,
+        bool(state.carrier_inventory_known),
+    )
+    settings.setValue(
+        CARRIER_KNOWN_COMMODITIES_KEY,
+        json.dumps(sorted(state.carrier_known_commodities)),
+    )
+    settings.setValue(
+        CARRIER_LAST_EVENT_TIMESTAMP_KEY,
+        state.carrier_last_event_timestamp,
+    )
+    settings.setValue(
+        CARRIER_LAST_EVENT_FINGERPRINT_KEY,
+        state.carrier_last_event_fingerprint,
+    )
+    if state.owned_carrier_id is None:
+        settings.remove(OWNED_CARRIER_ID_KEY)
+    else:
+        settings.setValue(OWNED_CARRIER_ID_KEY, str(state.owned_carrier_id))
+    settings.setValue(MARKET_SOURCES_KEY, json.dumps(state.market_sources, sort_keys=True))
+    settings.sync()
+
+
+def carrier_commodity_known(state: CommanderState, key: str) -> bool:
+    key = commodity_key(key)
+    return bool(
+        state.carrier_inventory_known
+        and key
+        and ("*" in state.carrier_known_commodities or key in state.carrier_known_commodities)
+    )
+
+
+def _cargo_transfer_fingerprint(event: dict) -> str:
+    return json.dumps(
+        {
+            "timestamp": event.get("timestamp", ""),
+            "Transfers": event.get("Transfers", []) or [],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _mark_carrier_watermark(state: CommanderState, event: dict) -> None:
+    timestamp = str(event.get("timestamp", "") or "")
+    if timestamp:
+        state.carrier_last_event_timestamp = timestamp
+    state.carrier_last_event_fingerprint = _cargo_transfer_fingerprint(event)
+
+
+def _apply_carrier_transfer(state: CommanderState, transfer: dict) -> bool:
+    """Apply one transfer only when that commodity has a trustworthy baseline."""
+    key = commodity_key(transfer.get("Type_Localised") or transfer.get("Type"))
+    if not key or not carrier_commodity_known(state, key):
+        return False
+    try:
+        count = max(0, int(transfer.get("Count", 0) or 0))
+    except (TypeError, ValueError):
+        return False
+    if count <= 0:
+        return False
+
+    direction = str(transfer.get("Direction", "")).strip().lower()
+    current = max(0, int(state.carrier_inventory.get(key, 0) or 0))
+    if direction == "tocarrier":
+        state.carrier_inventory[key] = current + count
+    elif direction == "toship":
+        if count > current:
+            # A missing transfer happened while Observatory was not tracking, or
+            # the baseline was wrong. Do not silently clamp and keep lying.
+            state.carrier_inventory.pop(key, None)
+            if "*" in state.carrier_known_commodities:
+                state.carrier_known_commodities.clear()
+            else:
+                state.carrier_known_commodities.discard(key)
+            state.carrier_inventory_known = bool(state.carrier_known_commodities)
+            state.log(f"Carrier {key} baseline lost; reset after verifying inventory")
+        else:
+            state.carrier_inventory[key] = current - count
+    else:
+        return False
+    return True
+
+
+def apply_ship_snapshot(state: CommanderState, data: dict) -> bool:
+    """Replace ship cargo from Elite's authoritative Cargo/Cargo.json snapshot."""
+    if not isinstance(data, dict):
+        return False
+    vessel = str(data.get("Vessel", "Ship") or "Ship").strip().lower()
+    if vessel != "ship":
+        return False
+
+    inventory: dict[str, int] = {}
+    for item in data.get("Inventory", []) or []:
+        if not isinstance(item, dict):
+            continue
+        key = commodity_key(item.get("Name_Localised") or item.get("Name"))
+        if not key:
+            continue
+        try:
+            count = max(0, int(item.get("Count", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        if count:
+            inventory[key] = inventory.get(key, 0) + count
+
+    changed = inventory != state.ship_inventory or not state.ship_inventory_known
+    state.ship_inventory = inventory
+    state.ship_inventory_known = True
+    return changed
+
+
+def read_cargo_file(state: CommanderState, journal_dir: Path) -> bool:
+    cargo_path = journal_dir / "Cargo.json"
+    if not cargo_path.exists():
+        return False
+    try:
+        with cargo_path.open("r", encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+    except Exception as exc:
+        state.log(f"Cargo read error: {exc}")
+        return False
+    return apply_ship_snapshot(state, data)
+
+
+def _market_source_name(data: dict, state: CommanderState) -> str:
+    return str(
+        data.get("StationName")
+        or state.station
+        or data.get("StarSystem")
+        or state.system
+        or ""
+    ).strip()
+
+
+def apply_market_snapshot(state: CommanderState, data: dict) -> bool:
+    """Learn buy locations from Market.json; never treat it as carrier storage."""
+    if not isinstance(data, dict):
+        return False
+
+    source = _market_source_name(data, state)
+    if not source:
+        return False
+
+    changed = False
+    for item in data.get("Items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            stock = int(item.get("Stock", 0) or 0)
+        except (TypeError, ValueError):
+            stock = 0
+        # Positive stock is the important signal: the market has this commodity
+        # available. Price field conventions vary between journal consumers.
+        if stock <= 0:
+            continue
+
+        keys = {
+            commodity_key(item.get("Name")),
+            commodity_key(item.get("Name_Localised")),
+        }
+        for key in keys:
+            if not key or key in state.market_sources:
+                continue
+            state.market_sources[key] = source
+            changed = True
+
+    return changed
+
+
+def read_market_file(state: CommanderState, journal_dir: Path) -> bool:
+    market_path = journal_dir / "Market.json"
+    if not market_path.exists():
+        return False
+    try:
+        with market_path.open("r", encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+    except Exception as exc:
+        state.log(f"Market read error: {exc}")
+        return False
+    changed = apply_market_snapshot(state, data)
+    if changed:
+        state.log(f"Market source scan: {_market_source_name(data, state)}")
+    return changed
+
+
+def restore_carrier_tracking(
+    state: CommanderState,
+    journal_dir: Path,
+) -> tuple[int, int, bool]:
+    """Safely advance a persisted carrier baseline through journal history.
+
+    If a CarrierBuy exists, that purchase is a genuine all-zero baseline. Without
+    one, historical CargoTransfer events are never assumed to start from zero.
+    A manual "carrier empty" baseline therefore remains exact across app restarts:
+    only transfer events newer than its saved watermark are replayed.
+    """
+    files = sorted(journal_dir.glob("Journal*.log"), key=lambda p: p.name)
+    events_applied = 0
+    purchase_baseline = False
+    persisted_baseline = bool(state.carrier_inventory_known)
+    watermark = state.carrier_last_event_timestamp
+
+    for journal_path in files:
+        try:
+            with journal_path.open("r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if not any(token in line for token in (
+                        '"CargoTransfer"', '"CarrierBuy"', '"CarrierStats"'
+                    )):
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    name = event.get("event")
+                    if name == "CarrierStats":
+                        try:
+                            state.owned_carrier_id = int(event.get("CarrierID"))
+                        except (TypeError, ValueError):
+                            pass
+                        continue
+
+                    if name == "CarrierBuy":
+                        if persisted_baseline:
+                            # The user's saved baseline is later than old purchase
+                            # history; do not rewind it during startup.
+                            continue
+                        state.carrier_inventory.clear()
+                        state.carrier_known_commodities = {"*"}
+                        state.carrier_inventory_known = True
+                        state.carrier_last_event_timestamp = str(event.get("timestamp", "") or "")
+                        state.carrier_last_event_fingerprint = ""
+                        purchase_baseline = True
+                        try:
+                            state.owned_carrier_id = int(event.get("CarrierID"))
+                        except (TypeError, ValueError):
+                            pass
+                        continue
+
+                    if name != "CargoTransfer" or not state.carrier_inventory_known:
+                        continue
+
+                    timestamp = str(event.get("timestamp", "") or "")
+                    if persisted_baseline and watermark and timestamp <= watermark:
+                        continue
+
+                    changed = False
+                    for transfer in event.get("Transfers", []) or []:
+                        if isinstance(transfer, dict) and _apply_carrier_transfer(state, transfer):
+                            changed = True
+                    _mark_carrier_watermark(state, event)
+                    if changed:
+                        events_applied += 1
+        except OSError:
+            continue
+
+    return len(files), events_applied, purchase_baseline
 
 def _settings_string_set(settings: QSettings, key: str) -> set[str]:
     raw = settings.value(key, "[]")
@@ -658,6 +1013,67 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         state.longitude = event.get("Longitude")
         changed = True
 
+    elif name == "Cargo":
+        if apply_ship_snapshot(state, event):
+            state.log("Ship cargo snapshot updated")
+            changed = True
+
+    elif name == "CarrierBuy":
+        try:
+            state.owned_carrier_id = int(event.get("CarrierID"))
+        except (TypeError, ValueError):
+            pass
+        if state.live_updates_enabled:
+            # Carrier purchase is a real zero baseline for every commodity.
+            state.carrier_inventory.clear()
+            state.carrier_known_commodities = {"*"}
+            state.carrier_inventory_known = True
+            state.carrier_last_event_timestamp = str(event.get("timestamp", "") or "")
+            state.carrier_last_event_fingerprint = ""
+        changed = True
+
+    elif name == "CarrierStats":
+        try:
+            state.owned_carrier_id = int(event.get("CarrierID"))
+        except (TypeError, ValueError):
+            pass
+        changed = True
+
+    elif name == "CargoTransfer":
+        # CargoTransfer is the authoritative local delta for fleet-carrier cargo.
+        # It is only applied to commodities with a trusted baseline. Cargo.json
+        # separately supplies the ship side of the same transfer.
+        if state.live_updates_enabled:
+            transfer_changed = False
+            for transfer in event.get("Transfers", []) or []:
+                if isinstance(transfer, dict) and _apply_carrier_transfer(state, transfer):
+                    transfer_changed = True
+            _mark_carrier_watermark(state, event)
+            if transfer_changed:
+                state.log("Carrier cargo updated from transfer")
+                changed = True
+
+    elif name == "Market":
+        # The journal event identifies the market; its full commodity list is in
+        # Market.json and is read by JournalMonitor immediately after this event.
+        market_system = event.get("StarSystem")
+        if market_system:
+            set_system(state, market_system, event.get("SystemAddress"), clear=False)
+        state.station = event.get("StationName", state.station)
+        changed = True
+
+    elif name == "MarketBuy":
+        # Buying is direct evidence that this station sells the commodity. Fill
+        # only a source we have not learned before; the UI separately protects
+        # user-entered Material Source cells from replacement.
+        if state.live_updates_enabled:
+            key = commodity_key(event.get("Type_Localised") or event.get("Type"))
+            source = _market_source_name(event, state)
+            if key and source and key not in state.market_sources:
+                state.market_sources[key] = source
+                state.log(f"Material source learned: {source}")
+                changed = True
+
     elif name in ("FSDJump", "CarrierJump"):
         set_system(state, event.get("StarSystem"), event.get("SystemAddress"), clear=True)
 
@@ -1092,6 +1508,7 @@ class JournalMonitor(QObject):
         load_held_data(self.state, self.settings)
         load_fss_data(self.state, self.settings)
         load_construction_body_index(self.state, self.settings)
+        load_logistics_data(self.state, self.settings)
         # self.db = connect_db()
         # init_db(self.db)
         self.current_file: Optional[Path] = None
@@ -1131,6 +1548,23 @@ class JournalMonitor(QObject):
                 f"{bodies_added} bodies added"
             )
 
+        carrier_files, transfer_events, purchase_baseline = restore_carrier_tracking(
+            self.state, self.journal_dir
+        )
+        if purchase_baseline:
+            self.state.log(
+                f"Carrier cargo reconstructed from purchase baseline: "
+                f"{transfer_events} transfer events across {carrier_files} journal files"
+            )
+            save_logistics_data(self.state, self.settings)
+        elif self.state.carrier_inventory_known and transfer_events:
+            self.state.log(
+                f"Carrier cargo advanced by {transfer_events} offline transfer events"
+            )
+            save_logistics_data(self.state, self.settings)
+        elif not self.state.carrier_inventory_known:
+            self.state.log("Carrier cargo baseline pending")
+
         journals_to_read = journals[-self.history_files:]
 
         for journal_path in journals_to_read:
@@ -1152,8 +1586,34 @@ class JournalMonitor(QObject):
         self.position = self.current_file.stat().st_size
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
         read_nav_route(self.state, self.journal_dir)
+        read_cargo_file(self.state, self.journal_dir)
+        if read_market_file(self.state, self.journal_dir):
+            save_logistics_data(self.state, self.settings)
         self.state.log(f"Watching: {self.current_file.name}")
         self.state.live_updates_enabled = True
+
+
+    def set_carrier_empty_baseline(self, commodities: list[str]) -> None:
+        """Mark selected construction commodities as zero on the carrier now."""
+        keys = {commodity_key(name) for name in (commodities or []) if commodity_key(name)}
+        if not keys:
+            return
+        with self.lock:
+            for key in keys:
+                self.state.carrier_inventory[key] = 0
+            if "*" not in self.state.carrier_known_commodities:
+                self.state.carrier_known_commodities.update(keys)
+            self.state.carrier_inventory_known = True
+            # The user's current carrier screen is the baseline. Ignore all
+            # journal deltas at or before this instant; future CargoTransfer
+            # events advance the saved snapshot.
+            self.state.carrier_last_event_timestamp = (
+                datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            )
+            self.state.carrier_last_event_fingerprint = ""
+            save_logistics_data(self.state, self.settings)
+            self.state.log(f"Carrier zero baseline set for {len(keys)} construction commodities")
+        self.updated.emit()
 
     def process_updates(self) -> None:
         with self.lock:
@@ -1192,8 +1652,26 @@ class JournalMonitor(QObject):
                     except json.JSONDecodeError:
                         continue
 
+                    event_name = event.get("event")
                     if apply_event(self.state, event):
                         changed = True
+
+                    if event_name == "Market":
+                        if read_market_file(self.state, self.journal_dir):
+                            changed = True
+
+                    if event_name in {
+                        "CargoTransfer", "MarketBuy", "MarketSell",
+                        "ColonisationConstructionDepot",
+                    }:
+                        if read_cargo_file(self.state, self.journal_dir):
+                            changed = True
+
+                    if event_name in {
+                        "CargoTransfer", "CarrierBuy", "CarrierStats",
+                        "Market", "MarketBuy",
+                    }:
+                        save_logistics_data(self.state, self.settings)
 
                     if event.get("event") in {
                         "FSSDiscoveryScan",
@@ -1239,6 +1717,19 @@ class JournalMonitor(QObject):
                             monitor.updated.emit()
                         return
 
+                    if path.name.lower() == "market.json":
+                        with monitor.lock:
+                            if read_market_file(monitor.state, monitor.journal_dir):
+                                save_logistics_data(monitor.state, monitor.settings)
+                                monitor.updated.emit()
+                        return
+
+                    if path.name.lower() == "cargo.json":
+                        with monitor.lock:
+                            if read_cargo_file(monitor.state, monitor.journal_dir):
+                                monitor.updated.emit()
+                        return
+
                     monitor.process_updates()
 
                 def on_created(self, event):
@@ -1253,9 +1744,36 @@ class JournalMonitor(QObject):
                             monitor.updated.emit()
                         return
 
+                    if path.name.lower() == "market.json":
+                        with monitor.lock:
+                            if read_market_file(monitor.state, monitor.journal_dir):
+                                save_logistics_data(monitor.state, monitor.settings)
+                                monitor.updated.emit()
+                        return
+
+                    if path.name.lower() == "cargo.json":
+                        with monitor.lock:
+                            if read_cargo_file(monitor.state, monitor.journal_dir):
+                                monitor.updated.emit()
+                        return
+
                     monitor.process_updates()
 
                 def on_moved(self, event):
+                    if event.is_directory:
+                        return
+                    path = Path(getattr(event, "dest_path", "") or event.src_path)
+                    if path.name.lower() == "cargo.json":
+                        with monitor.lock:
+                            if read_cargo_file(monitor.state, monitor.journal_dir):
+                                monitor.updated.emit()
+                        return
+                    if path.name.lower() == "market.json":
+                        with monitor.lock:
+                            if read_market_file(monitor.state, monitor.journal_dir):
+                                save_logistics_data(monitor.state, monitor.settings)
+                                monitor.updated.emit()
+                        return
                     monitor.process_updates()
 
             self.observer = Observer()

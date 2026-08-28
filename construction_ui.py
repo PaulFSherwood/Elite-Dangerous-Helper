@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 from construction_rules import ColonisationCatalog, FacilityRef, MaterialRequirement
+from state import commodity_key
 
 
 PRIMARY_GOALS = [
@@ -119,12 +120,22 @@ class MaterialData:
     commodity: str
     required: int = 0
     delivered: int = 0
+    ship: int = 0
     carrier: int = 0
     source: str = ""
 
     @property
     def still_needed(self) -> int:
-        return max(0, int(self.required) - int(self.delivered) - int(self.carrier))
+        # "Still needed" means material that still has to be acquired. Cargo
+        # already on the ship or carrier is owned even though it is not yet
+        # counted as Delivered by the construction depot.
+        return max(
+            0,
+            int(self.required)
+            - int(self.delivered)
+            - int(self.ship)
+            - int(self.carrier),
+        )
 
 @dataclass
 class FacilityData:
@@ -198,6 +209,7 @@ class ConstructionPanel(QWidget):
 
     current_build_changed = pyqtSignal(str, str)
     system_lock_changed = pyqtSignal(str, bool)
+    carrier_empty_baseline_requested = pyqtSignal(object)
 
     def __init__(self, settings: QSettings, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -210,6 +222,12 @@ class ConstructionPanel(QWidget):
         self.editing = False
         self.live_depot: Optional[dict[str, Any]] = None
         self.live_depot_resources: list[MaterialData] = []
+        self.ship_inventory: dict[str, int] = {}
+        self.ship_inventory_known = False
+        self.carrier_inventory: dict[str, int] = {}
+        self.carrier_inventory_known = False
+        self.carrier_known_commodities: set[str] = set()
+        self.market_sources: dict[str, str] = {}
         self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
         self._load_plan()
@@ -538,18 +556,23 @@ class ConstructionPanel(QWidget):
         depot = candidates[0]
 
         facility = self._focus_facility()
+        saved_rows = self._stored_materials_for(facility, include_live=False)
         saved_sources = {
-            row.commodity.lower(): row.source
-            for row in self._stored_materials_for(facility, include_live=False)
-            if row.source and not self._is_placeholder_source(row.source)
+            commodity_key(row.commodity): row.source
+            for row in saved_rows
+            if commodity_key(row.commodity)
+            and row.source
+            and not self._is_placeholder_source(row.source)
         }
-        saved_sources.update({
-            str(row.get("commodity", "")).lower(): str(row.get("source", ""))
-            for row in self.active_focus.get("materials", [])
-            if isinstance(row, dict)
-            and row.get("source")
-            and not self._is_placeholder_source(str(row.get("source", "")))
-        })
+        for saved in self.active_focus.get("materials", []) or []:
+            if not isinstance(saved, dict):
+                continue
+            key = commodity_key(saved.get("commodity", ""))
+            if not key:
+                continue
+            source = str(saved.get("source", ""))
+            if source and not self._is_placeholder_source(source):
+                saved_sources[key] = source
 
         resources: list[MaterialData] = []
         for row in depot.get("resources", []) or []:
@@ -558,12 +581,14 @@ class ConstructionPanel(QWidget):
             commodity = str(row.get("commodity", "")).strip()
             if not commodity:
                 continue
+            key = commodity_key(commodity)
             resources.append(MaterialData(
                 commodity=commodity,
                 required=self._int_cell(row.get("required", 0)),
                 delivered=self._int_cell(row.get("delivered", 0)),
-                carrier=self._int_cell(row.get("carrier", 0)),
-                source=saved_sources.get(commodity.lower(), ""),
+                ship=0,
+                carrier=0,
+                source=saved_sources.get(key, ""),
             ))
 
         previous_key = self.live_depot.get("market_id") if isinstance(self.live_depot, dict) else None
@@ -587,6 +612,57 @@ class ConstructionPanel(QWidget):
 
         if previous_key != next_key or previous_signature != next_signature:
             self._render_materials()
+
+    def set_logistics_data(
+        self,
+        ship_inventory: dict[str, int],
+        ship_inventory_known: bool,
+        carrier_inventory: dict[str, int],
+        carrier_inventory_known: bool,
+        carrier_known_commodities: set[str],
+        market_sources: dict[str, str],
+    ) -> None:
+        """Apply live ship cargo, tracked carrier cargo, and learned market sources."""
+        next_ship = {
+            commodity_key(name): max(0, self._int_cell(count))
+            for name, count in (ship_inventory or {}).items()
+            if commodity_key(name)
+        }
+        next_inventory = {
+            commodity_key(name): max(0, self._int_cell(count))
+            for name, count in (carrier_inventory or {}).items()
+            if commodity_key(name)
+        }
+        next_known_commodities = {
+            commodity_key(name) if name != "*" else "*"
+            for name in (carrier_known_commodities or set())
+            if name == "*" or commodity_key(name)
+        }
+        next_sources = {
+            commodity_key(name): str(location).strip()
+            for name, location in (market_sources or {}).items()
+            if commodity_key(name) and str(location).strip()
+        }
+        next_known = bool(carrier_inventory_known)
+        next_ship_known = bool(ship_inventory_known)
+
+        if (
+            next_ship == self.ship_inventory
+            and next_ship_known == self.ship_inventory_known
+            and next_inventory == self.carrier_inventory
+            and next_known_commodities == self.carrier_known_commodities
+            and next_sources == self.market_sources
+            and next_known == self.carrier_inventory_known
+        ):
+            return
+
+        self.ship_inventory = next_ship
+        self.ship_inventory_known = next_ship_known
+        self.carrier_inventory = next_inventory
+        self.carrier_known_commodities = next_known_commodities
+        self.market_sources = next_sources
+        self.carrier_inventory_known = next_known
+        self._render_materials()
 
     def set_current_build(self, facility: str, location: str) -> None:
         self.plan.current_build = facility or "Not selected"
@@ -888,6 +964,13 @@ class ConstructionPanel(QWidget):
         layout.addWidget(self.next_haul_card)
 
         toolbar = QHBoxLayout()
+        self.logistics_status_label = QLabel("Ship cargo: update pending • Carrier cargo: update pending")
+        self.logistics_status_label.setObjectName("constructionMuted")
+        self.set_carrier_empty_button = QPushButton("Set Carrier Empty")
+        self.set_carrier_empty_button.setToolTip(
+            "Use after the carrier has zero of every commodity listed for this construction build."
+        )
+        self.set_carrier_empty_button.clicked.connect(self.mark_tracked_carrier_empty)
         self.ship_capacity_spin = QSpinBox()
         self.ship_capacity_spin.setRange(1, 50000)
         self.ship_capacity_spin.setSuffix(" t")
@@ -896,6 +979,8 @@ class ConstructionPanel(QWidget):
         self.add_material_button.clicked.connect(self.add_material_row)
         self.remove_material_button.clicked.connect(self.remove_selected_material_row)
         self.ship_capacity_spin.valueChanged.connect(lambda _value: self._render_materials())
+        toolbar.addWidget(self.logistics_status_label)
+        toolbar.addWidget(self.set_carrier_empty_button)
         toolbar.addStretch()
         toolbar.addWidget(QLabel("Ship capacity"))
         toolbar.addWidget(self.ship_capacity_spin)
@@ -903,9 +988,9 @@ class ConstructionPanel(QWidget):
         toolbar.addWidget(self.remove_material_button)
         layout.addLayout(toolbar)
 
-        self.materials_table = QTableWidget(0, 7)
+        self.materials_table = QTableWidget(0, 8)
         self.materials_table.setHorizontalHeaderLabels([
-            "Commodity", "Required", "Delivered", "Carrier", "Still needed", "Ship trips", "Material Source"
+            "Commodity", "Required", "Delivered", "Ship", "Carrier", "Still needed", "Ship trips", "Material Source"
         ])
         header = self.materials_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -959,11 +1044,12 @@ class ConstructionPanel(QWidget):
 
     @staticmethod
     def _material_dict(row: MaterialData) -> dict[str, Any]:
+        # Ship/carrier quantities are live logistics state, not plan data. Do not
+        # persist them in the construction plan where they could become stale.
         return {
             "commodity": row.commodity,
             "required": int(row.required),
             "delivered": int(row.delivered),
-            "carrier": int(row.carrier),
             "source": row.source,
         }
 
@@ -987,7 +1073,8 @@ class ConstructionPanel(QWidget):
                 commodity=commodity,
                 required=self._int_cell(row.get("required", 0)),
                 delivered=self._int_cell(row.get("delivered", 0)),
-                carrier=self._int_cell(row.get("carrier", 0)),
+                ship=0,
+                carrier=0,
                 source=str(row.get("source", "")),
             ))
         return rows
@@ -997,21 +1084,59 @@ class ConstructionPanel(QWidget):
         authority_rows: list[MaterialData],
         saved_rows: list[MaterialData],
     ) -> list[MaterialData]:
-        sources = {
-            row.commodity.lower(): row.source
+        saved = {
+            commodity_key(row.commodity): row
             for row in saved_rows
-            if row.source and not self._is_placeholder_source(row.source)
+            if commodity_key(row.commodity)
         }
         merged: list[MaterialData] = []
         for row in authority_rows:
+            key = commodity_key(row.commodity)
+            previous = saved.get(key)
+            source = row.source
+            if previous is not None and previous.source and not self._is_placeholder_source(previous.source):
+                source = previous.source
             merged.append(MaterialData(
                 commodity=row.commodity,
                 required=row.required,
                 delivered=row.delivered,
-                carrier=row.carrier,
-                source=sources.get(row.commodity.lower(), row.source),
+                ship=0,
+                carrier=0,
+                source=source,
             ))
         return merged
+
+    def _carrier_key_known(self, key: str) -> bool:
+        return bool(
+            self.carrier_inventory_known
+            and key
+            and ("*" in self.carrier_known_commodities or key in self.carrier_known_commodities)
+        )
+
+    def _apply_logistics_overlays(self, rows: list[MaterialData]) -> list[MaterialData]:
+        overlaid: list[MaterialData] = []
+        for row in rows:
+            key = commodity_key(row.commodity)
+            ship = max(0, int(self.ship_inventory.get(key, 0) or 0)) if self.ship_inventory_known else 0
+            carrier = (
+                max(0, int(self.carrier_inventory.get(key, 0) or 0))
+                if self._carrier_key_known(key)
+                else 0
+            )
+
+            source = row.source
+            if key and self._is_placeholder_source(source):
+                source = self.market_sources.get(key, source)
+
+            overlaid.append(MaterialData(
+                commodity=row.commodity,
+                required=row.required,
+                delivered=row.delivered,
+                ship=ship,
+                carrier=carrier,
+                source=source,
+            ))
+        return overlaid
 
     def _stored_materials_for(
         self,
@@ -1034,12 +1159,13 @@ class ConstructionPanel(QWidget):
             or str(self.live_depot.get("system")) == self.system_name
             or self._is_active_focus_facility(facility)
         ):
-            return self._merge_material_sources(self.live_depot_resources, saved_rows)
+            rows = self._merge_material_sources(self.live_depot_resources, saved_rows)
+        elif saved_rows:
+            rows = saved_rows
+        else:
+            rows = self._seed_materials_for(facility)
 
-        if saved_rows:
-            return saved_rows
-
-        return self._seed_materials_for(facility)
+        return self._apply_logistics_overlays(rows)
 
     def _collect_material_edits(self) -> list[MaterialData]:
         rows: list[MaterialData] = []
@@ -1054,8 +1180,9 @@ class ConstructionPanel(QWidget):
                 commodity=commodity,
                 required=self._int_cell(text(1)),
                 delivered=self._int_cell(text(2)),
-                carrier=self._int_cell(text(3)),
-                source="" if text(6) == "Paste Location" else text(6),
+                ship=0,
+                carrier=0,
+                source="" if text(7) == "Paste Location" else text(7),
             ))
         return rows
 
@@ -1078,9 +1205,9 @@ class ConstructionPanel(QWidget):
     def add_material_row(self) -> None:
         row = self.materials_table.rowCount()
         self.materials_table.insertRow(row)
-        for col, value in enumerate(["", "0", "0", "0", "0", "0", "Paste Location"]):
+        for col, value in enumerate(["", "0", "0", "0", "0", "0", "0", "Paste Location"]):
             item = QTableWidgetItem(value)
-            if col in (4, 5):
+            if col in (3, 4, 5, 6):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.materials_table.setItem(row, col, item)
 
@@ -1101,7 +1228,7 @@ class ConstructionPanel(QWidget):
             return
         # The source/location field is intentionally editable while the plan is
         # locked.  Save it immediately so a pasted station is not lost.
-        if item.column() == 6:
+        if item.column() == 7:
             self._store_material_edits()
             self._save_plan()
             self._render_materials()
@@ -1115,12 +1242,38 @@ class ConstructionPanel(QWidget):
         row = self.materials_table.currentRow()
         if row < 0:
             return
-        item = self.materials_table.item(row, 6)
+        item = self.materials_table.item(row, 7)
         if item is None:
             return
         text = item.text().strip()
         if not self._is_placeholder_source(text):
             QApplication.clipboard().setText(text)
+
+    def mark_tracked_carrier_empty(self) -> None:
+        facility = self._focus_facility()
+        rows = self._stored_materials_for(facility) if facility is not None else []
+        commodities = [row.commodity for row in rows if commodity_key(row.commodity)]
+        if not commodities:
+            QMessageBox.information(
+                self,
+                "Carrier baseline",
+                "Load the construction material list first.",
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Set carrier construction cargo to zero?",
+            "Use this only when your carrier has ZERO of every commodity listed "
+            "in this Materials table. Other cargo such as Tritium is fine.\n\n"
+            "Observatory will save zero as the baseline and then track future "
+            "CargoTransfer events automatically.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.carrier_empty_baseline_requested.emit(commodities)
 
     def _next_action_data(self) -> tuple[str, str, str, int]:
         """Return title, detail, source and progress for the active focus build."""
@@ -1158,6 +1311,18 @@ class ConstructionPanel(QWidget):
             )
 
         if rows:
+            remaining_delivery = sum(
+                max(0, int(row.required) - int(row.delivered)) for row in rows
+            )
+            if remaining_delivery > 0:
+                stocked = sum(max(0, int(row.ship) + int(row.carrier)) for row in rows)
+                return (
+                    "Deliver stocked materials",
+                    f"{remaining_delivery:,} t still needs depot delivery • "
+                    f"{stocked:,} t currently on ship/carrier",
+                    "No source needed",
+                    progress,
+                )
             return (
                 "Material delivery complete",
                 "Return to the construction site and verify the build completes.",
@@ -1239,12 +1404,27 @@ class ConstructionPanel(QWidget):
                 f"Build system: {self.focus_system_name()}"
             )
 
+        tracked_keys = {commodity_key(row.commodity) for row in rows if commodity_key(row.commodity)}
+        carrier_ready = bool(tracked_keys) and all(self._carrier_key_known(key) for key in tracked_keys)
+        ship_status = "synced" if self.ship_inventory_known else "UPDATE PENDING"
+        carrier_status = "tracking" if carrier_ready else "UPDATE PENDING"
+        if hasattr(self, "logistics_status_label"):
+            self.logistics_status_label.setText(
+                f"Ship cargo: {ship_status} • Carrier cargo: {carrier_status}"
+            )
+            self.logistics_status_label.setToolTip(
+                "Ship cargo comes from Cargo.json. Carrier cargo is maintained from "
+                "a zero baseline plus CargoTransfer journal events."
+            )
+        if hasattr(self, "set_carrier_empty_button"):
+            self.set_carrier_empty_button.setEnabled(bool(tracked_keys))
+
         self._rendering_materials = True
         if self._materials_sort_initialized:
             sort_section = self.materials_table.horizontalHeader().sortIndicatorSection()
             sort_order = self.materials_table.horizontalHeader().sortIndicatorOrder()
         else:
-            sort_section = 4
+            sort_section = 5
             sort_order = Qt.SortOrder.DescendingOrder
 
         self.materials_table.setSortingEnabled(False)
@@ -1252,12 +1432,12 @@ class ConstructionPanel(QWidget):
             if not rows:
                 self.materials_table.setRowCount(1)
                 values = [
-                    "No material data yet", "", "", "", "", "", "Paste Location"
+                    "No material data yet", "", "", "", "", "", "", "Paste Location"
                 ]
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(value)
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    if col == 6:
+                    if col == 7:
                         item.setBackground(QColor("#493710"))
                         item.setForeground(QColor("#F59E0B"))
                     else:
@@ -1266,39 +1446,50 @@ class ConstructionPanel(QWidget):
             else:
                 self.materials_table.setRowCount(len(rows))
                 for row, material in enumerate(rows):
+                    key = commodity_key(material.commodity)
+                    carrier_known = self._carrier_key_known(key)
                     left = material.still_needed
                     trips = (left + capacity - 1) // capacity if left else 0
                     source = material.source.strip() if material.source else "Paste Location"
+                    ship_text = f"{material.ship:,}" if self.ship_inventory_known else "Update pending"
+                    carrier_text = f"{material.carrier:,}" if carrier_known else "Update pending"
                     values = [
                         material.commodity,
                         f"{material.required:,}",
                         f"{material.delivered:,}",
-                        f"{material.carrier:,}",
+                        ship_text,
+                        carrier_text,
                         f"{left:,}",
                         str(trips),
                         source,
                     ]
                     for col, value in enumerate(values):
-                        if col in (1, 2, 3, 4, 5):
-                            item = NumericSortItem(value, self._int_cell(value))
+                        if col in (1, 2, 3, 4, 5, 6):
+                            sort_value = self._int_cell(value) if value != "Update pending" else -1
+                            item = NumericSortItem(value, sort_value)
                         else:
                             item = QTableWidgetItem(value)
 
-                        editable = self.editing and col in (0, 1, 2, 3, 6)
-                        if not self.editing and col == 6:
+                        editable = self.editing and col in (0, 1, 2, 7)
+                        if not self.editing and col == 7:
                             editable = True
-                        if col in (4, 5):
+                        if col in (3, 4, 5, 6):
                             editable = False
                         if not editable:
                             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-                        if left > 0 and col in (0, 4, 5):
+                        if left > 0 and col in (0, 5, 6):
                             item.setForeground(QColor("#ffb000"))
                         elif left == 0:
                             item.setForeground(QColor("#6F7B85"))
                             item.setBackground(QColor("#101A22"))
 
-                        if col == 6:
+                        if col == 4 and not carrier_known:
+                            item.setForeground(QColor("#F59E0B"))
+                        if col == 3 and not self.ship_inventory_known:
+                            item.setForeground(QColor("#F59E0B"))
+
+                        if col == 7:
                             if self._is_placeholder_source(value):
                                 item.setText("Paste Location")
                                 item.setBackground(QColor("#493710"))
