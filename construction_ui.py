@@ -29,7 +29,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from construction_rules import ColonisationCatalog, FacilityRef, MaterialRequirement
+from construction_rules import (
+    ColonisationCatalog,
+    FacilityDescriptor,
+    FacilityPrerequisite,
+    FacilityRef,
+    MaterialRequirement,
+)
 from state import commodity_key
 
 
@@ -146,8 +152,12 @@ class FacilityData:
     status: str = "Queued"
     facility_id: str = ""
     facility_type: str = ""
+    category: str = ""
     tier: int = 0
     economy: str = ""
+    market_economy: str = ""
+    construction_tonnage: int = 0
+    point_cost_mode: str = "fixed"
     requires_tier_2: int = 0
     requires_tier_3: int = 0
     provides_tier_2: int = 0
@@ -162,8 +172,12 @@ class FacilityData:
             preferred_site=facility.site_type,
             facility_id=facility.id,
             facility_type=facility.facility_type,
+            category=facility.category,
             tier=facility.tier,
             economy=facility.economy,
+            market_economy=facility.market_economy,
+            construction_tonnage=facility.construction_tonnage,
+            point_cost_mode=facility.point_cost_mode,
             requires_tier_2=facility.requires_tier_2,
             requires_tier_3=facility.requires_tier_3,
             provides_tier_2=facility.provides_tier_2,
@@ -173,6 +187,11 @@ class FacilityData:
 
     @property
     def point_summary(self) -> str:
+        if self.point_cost_mode == "t2_port":
+            prefix = "requires escalating T2 port cost (3, 5, 7, …)"
+            return f"{prefix}, provides +{self.provides_tier_3} T3" if self.provides_tier_3 else prefix
+        if self.point_cost_mode == "t3_port":
+            return "requires escalating T3 port cost (6, 12, 18, …)"
         parts: list[str] = []
         if self.requires_tier_2:
             parts.append(f"requires {self.requires_tier_2} T2")
@@ -251,6 +270,8 @@ class ConstructionPanel(QWidget):
             self.plan = PlanData(**allowed)
             self.plan.sites = sites
             self.plan.facilities = facilities
+            if self._refresh_plan_facility_metadata():
+                self._save_plan()
         except (ValueError, TypeError):
             self.plan = PlanData()
 
@@ -280,8 +301,12 @@ class ConstructionPanel(QWidget):
             "location": facility.location,
             "facility_id": facility.facility_id,
             "facility_type": facility.facility_type,
+            "category": facility.category,
             "tier": facility.tier,
             "economy": facility.economy,
+            "market_economy": facility.market_economy,
+            "construction_tonnage": facility.construction_tonnage,
+            "point_cost_mode": facility.point_cost_mode,
             "preferred_site": facility.preferred_site,
             "reason": facility.reason,
             "confidence": facility.confidence,
@@ -307,8 +332,12 @@ class ConstructionPanel(QWidget):
             status="Building now",
             facility_id=str(self.active_focus.get("facility_id", "")),
             facility_type=str(self.active_focus.get("facility_type", "")),
+            category=str(self.active_focus.get("category", "")),
             tier=self._int_cell(self.active_focus.get("tier", 0)),
             economy=str(self.active_focus.get("economy", "")),
+            market_economy=str(self.active_focus.get("market_economy", "")),
+            construction_tonnage=self._int_cell(self.active_focus.get("construction_tonnage", 0)),
+            point_cost_mode=str(self.active_focus.get("point_cost_mode", "fixed") or "fixed"),
             confidence=str(self.active_focus.get("confidence", "active_focus")),
         )
 
@@ -910,7 +939,14 @@ class ConstructionPanel(QWidget):
         self.queue_table.setHorizontalHeaderLabels([
             "Order", "Recommended build", "Where to build", "Site", "Points", "Reason", "Status", "Action"
         ])
-        self.queue_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Keep every queue column user-resizable.  Stretch mode made the header
+        # handles effectively fixed, which was especially painful for the long
+        # facility names and prerequisite explanations.
+        queue_header = self.queue_table.horizontalHeader()
+        queue_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        queue_header.setMinimumSectionSize(55)
+        for column, width in enumerate((60, 320, 170, 80, 190, 360, 105, 105)):
+            queue_header.resizeSection(column, width)
         self.queue_table.verticalHeader().setVisible(False)
         self.queue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout.addWidget(self.queue_table)
@@ -1697,6 +1733,446 @@ class ConstructionPanel(QWidget):
                 self.plan.primary_port_location = site.body
             return
 
+    @staticmethod
+    def _facility_body_from_location(location: str) -> str:
+        return str(location or "").split(" — ", 1)[0].strip()
+
+    def _queue_display_location(self, location: str) -> str:
+        """Use compact body text in the queue while preserving full data.
+
+        The Build System is already displayed above the table, so a location
+        such as ``Nyeakua GG-D b4-1 A 2 — Surface 2`` can be shown as
+        ``A 2 — Surface 2``.  The full location remains available as a tooltip.
+        """
+        full = str(location or "")
+        system = str(self.system_name or "").strip()
+        prefix = f"{system} " if system and system != "Unknown system" else ""
+        if prefix and full.startswith(prefix):
+            return full[len(prefix):]
+        return full
+
+    @staticmethod
+    def _site_facility_fragments(text: str) -> list[str]:
+        """Split the editable Sites marker column into individual facilities."""
+
+        fragments: list[str] = []
+        for part in re.split(r"[;\n]+", str(text or "")):
+            cleaned = part.strip()
+            if not cleaned:
+                continue
+            # Planner decorations are presentation, not part of the facility
+            # identity.  A hammer/arrow means the build is not complete yet.
+            if "⚒" in cleaned or "→" in cleaned:
+                continue
+            cleaned = re.sub(r"^[✓•\s]+", "", cleaned).strip()
+            if cleaned:
+                fragments.append(cleaned)
+        return fragments
+
+    @staticmethod
+    def _descriptor_for_facility_data(facility: FacilityData) -> FacilityDescriptor:
+        reference = CATALOG.facility(facility.facility_id) if facility.facility_id else None
+        if reference is not None:
+            return reference.descriptor
+        return FacilityDescriptor(
+            facility_type=facility.facility_type,
+            category=facility.category,
+            economy=facility.economy,
+            tier=facility.tier,
+            facility_id=facility.facility_id,
+        )
+
+    @staticmethod
+    def _reference_for_facility_data(facility: FacilityData) -> FacilityRef:
+        by_id = CATALOG.facility(facility.facility_id) if facility.facility_id else None
+        by_text = CATALOG.facility_from_text(facility.role)
+
+        # Saved plans can survive several catalog revisions.  If an old row's
+        # id points at a different layout than the human-readable role now
+        # names, trust the role and migrate it to the current catalog entry.
+        # This specifically prevents stale embedded T2/T3 values from turning a
+        # completed Aerecura into a +1 T2 facility after an upgrade.
+        reference = by_id
+        if by_text is not None:
+            if by_id is None:
+                reference = by_text
+            else:
+                role_norm = CATALOG._normalise(facility.role)
+                id_name_norm = CATALOG._normalise(by_id.name)
+                text_name_norm = CATALOG._normalise(by_text.name)
+                if text_name_norm and text_name_norm in role_norm and id_name_norm not in role_norm:
+                    reference = by_text
+        if reference is not None:
+            return reference
+        return FacilityRef(
+            id=facility.facility_id or facility.role,
+            name=facility.role,
+            facility_type=facility.facility_type,
+            category=facility.category,
+            tier=facility.tier,
+            site_type=facility.preferred_site,
+            economy=facility.economy,
+            market_economy=facility.market_economy,
+            construction_tonnage=facility.construction_tonnage,
+            point_cost_mode=facility.point_cost_mode,
+            requires_tier_2=facility.requires_tier_2,
+            requires_tier_3=facility.requires_tier_3,
+            provides_tier_2=facility.provides_tier_2,
+            provides_tier_3=facility.provides_tier_3,
+            confidence=facility.confidence,
+            notes=facility.reason,
+        )
+
+    def _refresh_plan_facility_metadata(self) -> bool:
+        """Migrate saved planner rows onto the current authoritative catalog.
+
+        Construction plans are persistent, while facility rules are now being
+        corrected from current in-game/community data.  Refreshing every known
+        row prevents old serialized cost/reward fields from corrupting the
+        current construction-point balance.  Status/location are preserved.
+        """
+
+        changed = False
+        for facility in self.plan.facilities:
+            reference = self._reference_for_facility_data(facility)
+            if reference.id == (facility.facility_id or facility.role) and CATALOG.facility(reference.id) is None:
+                continue
+            updates = {
+                "facility_id": reference.id,
+                "facility_type": reference.facility_type,
+                "category": reference.category,
+                "tier": reference.tier,
+                "economy": reference.economy,
+                "market_economy": reference.market_economy,
+                "preferred_site": reference.site_type,
+                "construction_tonnage": reference.construction_tonnage,
+                "point_cost_mode": reference.point_cost_mode,
+                "requires_tier_2": reference.requires_tier_2,
+                "requires_tier_3": reference.requires_tier_3,
+                "provides_tier_2": reference.provides_tier_2,
+                "provides_tier_3": reference.provides_tier_3,
+                "confidence": reference.confidence,
+            }
+            for key, value in updates.items():
+                if getattr(facility, key) != value:
+                    setattr(facility, key, value)
+                    changed = True
+            if facility.facility_id != "primary_port" and reference.display_name != facility.role:
+                facility.role = reference.display_name
+                changed = True
+        return changed
+
+    def _completed_facility_descriptors(self) -> list[FacilityDescriptor]:
+        descriptors: list[FacilityDescriptor] = []
+        for facility in self.plan.facilities:
+            if facility.status == "Complete":
+                descriptors.append(self._descriptor_for_facility_data(facility))
+
+        # Sites may contain facilities that were built before Observatory began
+        # tracking the plan.  Classify those by structured type/economy so a
+        # prerequisite is not tied to one exact layout name.
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                descriptor = CATALOG.descriptor_from_text(fragment)
+                if descriptor is not None:
+                    descriptors.append(descriptor)
+        return descriptors
+
+    def _construction_state(self) -> tuple[int, int, int, int]:
+        """Return available T2/T3 plus counts in the escalating port curves.
+
+        Point costs are spent when construction starts and rewards arrive only
+        on completion.  The returned port counts include completed and active
+        non-primary ports because the next port's preview cost depends on how
+        many earlier ports in that same cost curve already exist.
+        """
+
+        tier_2 = 0
+        tier_3 = 0
+        t2_ports = 0
+        t3_ports = 0
+        completed_plan_locations: set[tuple[str, str]] = set()
+
+        for facility in self.plan.facilities:
+            if facility.status not in ("Complete", "Building now"):
+                continue
+            reference = self._reference_for_facility_data(facility)
+            cost_t2, cost_t3 = CATALOG.point_cost(
+                reference,
+                previous_t2_ports=t2_ports,
+                previous_t3_ports=t3_ports,
+            )
+            tier_2 -= cost_t2
+            tier_3 -= cost_t3
+            if reference.point_cost_mode == "t2_port":
+                t2_ports += 1
+            elif reference.point_cost_mode == "t3_port":
+                t3_ports += 1
+            if facility.status == "Complete":
+                tier_2 += reference.provides_tier_2
+                tier_3 += reference.provides_tier_3
+                if reference.id:
+                    completed_plan_locations.add(
+                        (self._facility_body_from_location(facility.location), reference.id)
+                    )
+
+        # Facilities recorded in Sites may pre-date this planner.  Count only
+        # catalog-resolvable completed markers and deduplicate against plan rows.
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is None:
+                    continue
+                if (site.body, reference.id) in completed_plan_locations:
+                    continue
+                cost_t2, cost_t3 = CATALOG.point_cost(
+                    reference,
+                    previous_t2_ports=t2_ports,
+                    previous_t3_ports=t3_ports,
+                )
+                tier_2 += reference.provides_tier_2 - cost_t2
+                tier_3 += reference.provides_tier_3 - cost_t3
+                if reference.point_cost_mode == "t2_port":
+                    t2_ports += 1
+                elif reference.point_cost_mode == "t3_port":
+                    t3_ports += 1
+
+        return max(0, tier_2), max(0, tier_3), t2_ports, t3_ports
+
+    def _construction_point_balance(self) -> tuple[int, int]:
+        tier_2, tier_3, _t2_ports, _t3_ports = self._construction_state()
+        return tier_2, tier_3
+
+    def _prerequisite_satisfied(
+        self,
+        prerequisite: FacilityPrerequisite,
+        descriptors: Optional[list[FacilityDescriptor]] = None,
+    ) -> bool:
+        candidates = descriptors if descriptors is not None else self._completed_facility_descriptors()
+        return any(
+            CATALOG.descriptor_matches_prerequisite(descriptor, prerequisite)
+            for descriptor in candidates
+        )
+
+    def _facility_can_build(
+        self,
+        facility: FacilityData,
+        tier_2: int,
+        tier_3: int,
+        descriptors: list[FacilityDescriptor],
+        t2_ports: int = 0,
+        t3_ports: int = 0,
+    ) -> bool:
+        reference = self._reference_for_facility_data(facility)
+        cost_t2, cost_t3 = CATALOG.point_cost(
+            reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+        )
+        if cost_t2 > tier_2 or cost_t3 > tier_3:
+            return False
+        return all(
+            self._prerequisite_satisfied(prerequisite, descriptors)
+            for prerequisite in reference.prerequisites
+        )
+
+    def _apply_facility_points(
+        self,
+        facility: FacilityData,
+        tier_2: int,
+        tier_3: int,
+        t2_ports: int = 0,
+        t3_ports: int = 0,
+    ) -> tuple[int, int, int, int]:
+        reference = self._reference_for_facility_data(facility)
+        cost_t2, cost_t3 = CATALOG.point_cost(
+            reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+        )
+        tier_2 = max(0, tier_2 - cost_t2 + reference.provides_tier_2)
+        tier_3 = max(0, tier_3 - cost_t3 + reference.provides_tier_3)
+        if reference.point_cost_mode == "t2_port":
+            t2_ports += 1
+        elif reference.point_cost_mode == "t3_port":
+            t3_ports += 1
+        return tier_2, tier_3, t2_ports, t3_ports
+
+    def _repair_impossible_building_focus(self) -> bool:
+        """Demote stale planner focus rows whose prerequisites do not exist.
+
+        A ``Building now`` row is a player-selected Observatory focus, not proof
+        that Elite actually allowed construction to start.  This matters when
+        facility rules are corrected after a plan was already saved: an old
+        focus such as Tartarus may remain pinned even though the system has no
+        completed Extraction settlement.  Elite cannot have legitimately
+        started that hub in that state, so return it to the queue and clear the
+        stale global focus record.
+
+        Construction-point affordability is intentionally *not* used here.  A
+        legitimate in-progress build has already spent its point cost, so its
+        current balance can be lower than the amount originally required.
+        """
+
+        descriptors = self._completed_facility_descriptors()
+        changed = False
+        for facility in self.plan.facilities:
+            if facility.status != "Building now":
+                continue
+            reference = self._reference_for_facility_data(facility)
+            if not reference.prerequisites:
+                continue
+            if all(
+                self._prerequisite_satisfied(prerequisite, descriptors)
+                for prerequisite in reference.prerequisites
+            ):
+                continue
+
+            facility.status = "Queued"
+            if (
+                self.plan.current_build == facility.role
+                and self.plan.current_location == facility.location
+            ):
+                self.plan.current_build = "Not selected"
+                self.plan.current_location = "Not selected"
+            active_focus_id = str(self.active_focus.get("facility_id", "") or "")
+            active_focus_system = str(self.active_focus.get("system_name", "") or "")
+            if (
+                self._is_active_focus_facility(facility)
+                or (
+                    active_focus_id
+                    and active_focus_id == facility.facility_id
+                    and (not active_focus_system or active_focus_system == self.system_name)
+                )
+            ):
+                self.active_focus = {}
+                self.settings.remove("construction/active_focus")
+                self.settings.sync()
+            changed = True
+        return changed
+
+    def _ensure_prerequisite_rows(self) -> bool:
+        """Insert/move generic prerequisite facilities ahead of dependants.
+
+        Example: Tartarus requires ``Settlement - Extraction``.  The resolver
+        searches for *any* matching Settlement/Extraction facility already in
+        the plan/system.  If none exists, it picks the best matching facility
+        that the current T2/T3 balance can build, rather than hard-coding one
+        settlement name.
+        """
+
+        changed = False
+        # Multiple passes allow a newly inserted prerequisite to have its own
+        # prerequisite without turning the resolver into name-specific code.
+        for _pass in range(8):
+            pass_changed = False
+            tier_2, tier_3 = self._construction_point_balance()
+            index = 0
+            while index < len(self.plan.facilities):
+                facility = self.plan.facilities[index]
+                reference = self._reference_for_facility_data(facility)
+                if not reference.prerequisites:
+                    index += 1
+                    continue
+
+                for prerequisite in reference.prerequisites:
+                    if self._prerequisite_satisfied(prerequisite):
+                        continue
+
+                    matching_index: Optional[int] = None
+                    for candidate_index, candidate in enumerate(self.plan.facilities):
+                        if candidate is facility or candidate.status == "Skipped":
+                            continue
+                        descriptor = self._descriptor_for_facility_data(candidate)
+                        if CATALOG.descriptor_matches_prerequisite(descriptor, prerequisite):
+                            matching_index = candidate_index
+                            break
+
+                    if matching_index is not None:
+                        if matching_index > index:
+                            candidate = self.plan.facilities.pop(matching_index)
+                            self.plan.facilities.insert(index, candidate)
+                            pass_changed = True
+                            changed = True
+                            index += 1
+                        continue
+
+                    candidate_ref = CATALOG.best_prerequisite_candidate(
+                        prerequisite,
+                        available_tier_2=tier_2,
+                        available_tier_3=tier_3,
+                    )
+                    if candidate_ref is None:
+                        continue
+
+                    candidate = FacilityData.from_reference(
+                        candidate_ref,
+                        (
+                            f"Prerequisite for {facility.role}: requires "
+                            f"{prerequisite.display_name}. Any facility matching "
+                            "that type/category and economy can satisfy it."
+                        ),
+                    )
+                    self.plan.facilities.insert(index, candidate)
+                    pass_changed = True
+                    changed = True
+                    index += 1
+
+                index += 1
+
+            if not pass_changed:
+                break
+        return changed
+
+    def _reorder_facilities_for_buildability(self) -> bool:
+        """Greedily turn the goal list into a construction-point-feasible order."""
+
+        original = list(self.plan.facilities)
+        completed = [facility for facility in original if facility.status == "Complete"]
+        building = [facility for facility in original if facility.status == "Building now"]
+        queued = [facility for facility in original if facility.status == "Queued"]
+        skipped = [facility for facility in original if facility.status == "Skipped"]
+        other = [
+            facility
+            for facility in original
+            if facility.status not in ("Complete", "Building now", "Queued", "Skipped")
+        ]
+
+        tier_2, tier_3, t2_ports, t3_ports = self._construction_state()
+        descriptors = self._completed_facility_descriptors()
+        ordered: list[FacilityData] = completed + building
+
+        # The current balance already includes the construction-point cost of
+        # Building-now rows.  For future ordering, simulate only the rewards that
+        # arrive when those active builds complete; do not charge their cost twice.
+        for facility in building:
+            reference = self._reference_for_facility_data(facility)
+            tier_2 += reference.provides_tier_2
+            tier_3 += reference.provides_tier_3
+            descriptors.append(self._descriptor_for_facility_data(facility))
+
+        remaining = list(queued)
+        while remaining:
+            choice: Optional[FacilityData] = None
+            for facility in remaining:
+                if self._facility_can_build(
+                    facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
+                ):
+                    choice = facility
+                    break
+            if choice is None:
+                ordered.extend(remaining)
+                break
+            ordered.append(choice)
+            remaining.remove(choice)
+            tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                choice, tier_2, tier_3, t2_ports, t3_ports
+            )
+            descriptors.append(self._descriptor_for_facility_data(choice))
+
+        ordered.extend(other)
+        ordered.extend(skipped)
+        if ordered == original:
+            return False
+        self.plan.facilities = ordered
+        return True
+
     def _regenerate_facilities(self, goal: Optional[str] = None) -> None:
         goal = goal or self.plan.primary_goal
         old_by_id = {facility.facility_id: facility for facility in self.plan.facilities if facility.facility_id}
@@ -1715,7 +2191,20 @@ class ConstructionPanel(QWidget):
                 facility.role = self.plan.primary_port_name or facility.role
             generated.append(facility)
 
+        # Preserve facilities that physically exist or are genuinely in progress
+        # even when they are not explicit rows in the newly selected goal recipe.
+        # Queued helper/prerequisite rows can be regenerated from the new goal.
+        generated_ids = {facility.facility_id for facility in generated if facility.facility_id}
+        for previous in self.plan.facilities:
+            if previous.facility_id in generated_ids:
+                continue
+            if previous.status in ("Complete", "Building now"):
+                generated.append(previous)
+
         self.plan.facilities = generated
+        self._repair_impossible_building_focus()
+        self._ensure_prerequisite_rows()
+        self._reorder_facilities_for_buildability()
         self._assign_recommended_locations()
 
     def _free_location(self, preferred: str) -> str:
@@ -1851,14 +2340,24 @@ class ConstructionPanel(QWidget):
 
     def _render_queue(self, goal: Optional[str] = None) -> None:
         goal = goal or self.plan.primary_goal
+        if self._refresh_plan_facility_metadata():
+            self._save_plan()
         if goal != self.plan.primary_goal or not self.plan.facilities:
             self._regenerate_facilities(goal)
         else:
+            changed = self._repair_impossible_building_focus()
+            changed = self._ensure_prerequisite_rows() or changed
+            changed = self._reorder_facilities_for_buildability() or changed
             self._assign_recommended_locations()
+            if changed:
+                self._save_plan()
 
         rows = self.plan.facilities
+        tier_2, tier_3 = self._construction_point_balance()
         self.queue_notice.setText(
-            f"Build system: {self.display_system_name()}  •  Suggested order; verify any unconfirmed facility data in game."
+            f"Build system: {self.display_system_name()}  •  "
+            f"Construction points available now: {tier_2} T2, {tier_3} T3  •  "
+            "Suggested order resolves facility-type/economy prerequisites before dependants."
         )
         self.queue_table.setRowCount(len(rows))
         next_facility: Optional[FacilityData] = None
@@ -1879,6 +2378,16 @@ class ConstructionPanel(QWidget):
             values = [
                 str(row + 1),
                 facility.role,
+                self._queue_display_location(facility.location),
+                facility.preferred_site.title(),
+                facility.point_summary,
+                facility.reason,
+                facility.status,
+                action,
+            ]
+            tooltips = [
+                str(row + 1),
+                facility.role,
                 facility.location,
                 facility.preferred_site.title(),
                 facility.point_summary,
@@ -1888,6 +2397,7 @@ class ConstructionPanel(QWidget):
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setToolTip(tooltips[col])
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if action == "→ NEXT":
                     item.setBackground(QColor("#5B3B05"))
