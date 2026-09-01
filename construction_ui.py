@@ -5,7 +5,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-from PyQt6.QtCore import Qt, QSettings, pyqtSignal
+from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -265,6 +265,22 @@ class ConstructionPanel(QWidget):
         self.market_sources: dict[str, str] = {}
         self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
+
+        # Construction mode receives several filesystem/journal notifications for
+        # a single in-game action.  Keep the live planner in memory and coalesce
+        # persistence instead of forcing synchronous settings I/O on every event.
+        self._settings_sync_timer = QTimer(self)
+        self._settings_sync_timer.setSingleShot(True)
+        self._settings_sync_timer.setInterval(250)
+        self._settings_sync_timer.timeout.connect(self.settings.sync)
+        self._system_replan_timer = QTimer(self)
+        self._system_replan_timer.setSingleShot(True)
+        self._system_replan_timer.setInterval(90)
+        self._system_replan_timer.timeout.connect(self._apply_system_data_replan)
+        self._last_saved_plan_key = ""
+        self._last_saved_plan_payload = ""
+        self._last_system_data_signature: tuple[Any, ...] | None = None
+
         self._load_plan()
         self._build_ui()
         self._apply_plan()
@@ -277,7 +293,11 @@ class ConstructionPanel(QWidget):
         raw = self.settings.value(self._key(), "")
         if not raw:
             self.plan = PlanData()
+            self._last_saved_plan_key = self._key()
+            self._last_saved_plan_payload = ""
             return
+        self._last_saved_plan_key = self._key()
+        self._last_saved_plan_payload = str(raw)
         try:
             data = json.loads(str(raw))
             sites = [SiteData(**row) for row in data.pop("sites", [])]
@@ -293,9 +313,21 @@ class ConstructionPanel(QWidget):
         except (ValueError, TypeError):
             self.plan = PlanData()
 
+    def _schedule_settings_sync(self) -> None:
+        # QSettings.setValue updates the in-process value immediately.  The
+        # expensive disk flush is delayed briefly so a burst of journal events
+        # results in one sync instead of dozens on the GUI thread.
+        self._settings_sync_timer.start()
+
     def _save_plan(self) -> None:
-        self.settings.setValue(self._key(), json.dumps(asdict(self.plan), sort_keys=True))
-        self.settings.sync()
+        key = self._key()
+        payload = json.dumps(asdict(self.plan), sort_keys=True)
+        if key == self._last_saved_plan_key and payload == self._last_saved_plan_payload:
+            return
+        self.settings.setValue(key, payload)
+        self._last_saved_plan_key = key
+        self._last_saved_plan_payload = payload
+        self._schedule_settings_sync()
 
     def _load_active_focus(self) -> dict[str, Any]:
         raw = self.settings.value("construction/active_focus", "")
@@ -333,9 +365,11 @@ class ConstructionPanel(QWidget):
             "ship_capacity_tons": int(self.plan.ship_capacity_tons or 1),
             "materials": [self._material_dict(row) for row in materials],
         }
+        if record == self.active_focus:
+            return
         self.active_focus = record
         self.settings.setValue("construction/active_focus", json.dumps(record, sort_keys=True))
-        self.settings.sync()
+        self._schedule_settings_sync()
 
     def _active_focus_facility(self) -> Optional[FacilityData]:
         if not self.active_focus:
@@ -384,7 +418,7 @@ class ConstructionPanel(QWidget):
     def _save_system_lock(self) -> None:
         self.settings.setValue("construction/system_locked", bool(self.system_locked))
         self.settings.setValue("construction/locked_system_name", self.locked_system_name)
-        self.settings.sync()
+        self._schedule_settings_sync()
 
     def _emit_system_lock_changed(self) -> None:
         self.system_lock_changed.emit(self.display_system_name(), bool(self.system_locked))
@@ -419,6 +453,7 @@ class ConstructionPanel(QWidget):
         if system_name == self.system_name:
             return True
         self.system_name = system_name
+        self._last_system_data_signature = None
         if self.system_locked:
             self.locked_system_name = system_name
         self.active_focus = self._load_active_focus()
@@ -517,13 +552,55 @@ class ConstructionPanel(QWidget):
             base += 2
         return min(6, max(0, base))
 
+    @staticmethod
+    def _system_data_signature(system_name: str, bodies: dict[str, Any]) -> tuple[Any, ...]:
+        """Cheap fingerprint of body data that can affect colony planning.
+
+        Journal/Cargo/Market writes can all emit UI refreshes even when the
+        system map has not changed.  Deep planning must not be regenerated for
+        those unrelated events.
+        """
+
+        rows: list[tuple[Any, ...]] = []
+        for name, body in (bodies or {}).items():
+            parents: list[tuple[str, str]] = []
+            for parent in getattr(body, "parents", []) or []:
+                if not isinstance(parent, dict):
+                    continue
+                for kind, value in parent.items():
+                    parents.append((str(kind), str(value)))
+            radius_m = getattr(body, "radius_m", None)
+            mass_em = getattr(body, "mass_em", None)
+            distance_ls = getattr(body, "distance_ls", None)
+            rows.append((
+                str(name),
+                str(getattr(body, "kind", "Unknown") or "Unknown"),
+                str(getattr(body, "subtype", "") or ""),
+                bool(getattr(body, "landable", False)),
+                getattr(body, "body_id", None),
+                round(float(radius_m), 3) if radius_m is not None else None,
+                round(float(mass_em), 8) if mass_em is not None else None,
+                str(getattr(body, "atmosphere", "") or ""),
+                str(getattr(body, "volcanism", "") or ""),
+                round(float(distance_ls), 5) if distance_ls is not None else None,
+                tuple(parents),
+            ))
+        rows.sort(key=lambda row: row[0].casefold())
+        return (str(system_name or "Unknown system"), tuple(rows))
+
     def set_system_data(self, system_name: str, bodies: dict[str, Any]) -> None:
-        """Load every indexed body while preserving player-entered corrections."""
+        """Apply system-map changes without replanning on every journal event."""
         self.current_system_name = system_name or "Unknown system"
         if not self.set_system(system_name):
             # System Status Lock is active and the commander has jumped away.
             # Keep the planning tabs pinned to the locked colony system.
             return
+
+        signature = self._system_data_signature(self.system_name, bodies)
+        if signature == self._last_system_data_signature:
+            return
+        self._last_system_data_signature = signature
+
         known = {site.body: site for site in self.plan.sites}
         id_to_name = {
             int(getattr(body, "body_id")): name
@@ -563,15 +640,26 @@ class ConstructionPanel(QWidget):
 
             if name in known:
                 site = known[name]
-                site.body_type = body_type
-                site.landable = landable
-                site.body_id = body_id
-                site.radius_km = radius_km
-                site.mass_em = mass_em
-                site.atmosphere = atmosphere
-                site.volcanism = volcanism
-                site.parent_body = parent_body
-                site.distance_ls = distance_ls
+                old_metadata = (
+                    site.body_type, site.landable, site.body_id, site.radius_km,
+                    site.mass_em, site.atmosphere, site.volcanism,
+                    site.parent_body, site.distance_ls,
+                )
+                new_metadata = (
+                    body_type, landable, body_id, radius_km, mass_em, atmosphere,
+                    volcanism, parent_body, distance_ls,
+                )
+                if old_metadata != new_metadata:
+                    site.body_type = body_type
+                    site.landable = landable
+                    site.body_id = body_id
+                    site.radius_km = radius_km
+                    site.mass_em = mass_em
+                    site.atmosphere = atmosphere
+                    site.volcanism = volcanism
+                    site.parent_body = parent_body
+                    site.distance_ls = distance_ls
+                    changed = True
                 continue
 
             estimated_surface = self._estimate_surface_slots(body)
@@ -597,8 +685,14 @@ class ConstructionPanel(QWidget):
         self.plan.sites.sort(key=lambda site: self._body_sort_key(site.body, site.body_id))
         if changed:
             self._save_plan()
+
+        # FSS can discover several bodies in a burst.  Coalesce those changes so
+        # a twenty-body scan produces one deep-plan rebuild instead of twenty.
+        self._system_replan_timer.start()
+
+    def _apply_system_data_replan(self) -> None:
         self._regenerate_facilities()
-        self._render_sites()
+        # _render_queue also refreshes Sites/Materials, so paint once.
         self._render_queue()
 
     def set_construction_depots(self, depots: dict[str, dict]) -> None:
@@ -681,10 +775,14 @@ class ConstructionPanel(QWidget):
             (row.commodity, row.required, row.delivered, row.carrier)
             for row in resources
         ]
+        depot_changed = previous_key != next_key or previous_signature != next_signature
         self.live_depot = depot
         self.live_depot_resources = resources
 
-        if facility is not None and resources:
+        # The monitor calls this on every construction-mode refresh.  Persist and
+        # repaint only when Elite actually changed the depot snapshot (or when the
+        # first depot event proves that construction started).
+        if facility is not None and resources and (depot_changed or started_now):
             key = self._material_key_for(facility)
             self.plan.materials_by_build[key] = [self._material_dict(row) for row in resources]
             self._save_plan()
@@ -695,7 +793,7 @@ class ConstructionPanel(QWidget):
             self._render_queue()
             self._update_overview_status()
 
-        if previous_key != next_key or previous_signature != next_signature:
+        if depot_changed:
             self._render_materials()
 
     def set_logistics_data(
@@ -1412,7 +1510,7 @@ class ConstructionPanel(QWidget):
             self.active_focus["materials"] = [self._material_dict(row) for row in rows]
             self.active_focus["ship_capacity_tons"] = int(self.plan.ship_capacity_tons or 1)
             self.settings.setValue("construction/active_focus", json.dumps(self.active_focus, sort_keys=True))
-            self.settings.sync()
+            self._schedule_settings_sync()
             return
         key = self._material_key_for(facility)
         self.plan.materials_by_build[key] = [
@@ -2533,7 +2631,7 @@ class ConstructionPanel(QWidget):
             ):
                 self.active_focus = {}
                 self.settings.remove("construction/active_focus")
-                self.settings.sync()
+                self._schedule_settings_sync()
             changed = True
         return changed
 

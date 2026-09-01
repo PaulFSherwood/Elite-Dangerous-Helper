@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QSettings, QSize, QRect
+from PyQt6.QtCore import Qt, QSettings, QSize, QRect, QTimer
 from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QWidget,
@@ -48,7 +48,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.1.0"
+VERSION = "v3.1.1"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -1062,8 +1062,16 @@ class OverlayWindow(QWidget):
 
         self.setStyleSheet(load_stylesheet())
 
+        # Watchdog can report several file changes for one Elite action
+        # (Journal + Cargo + Market).  Coalesce those notifications so the GUI
+        # never runs several full refreshes back-to-back on the main thread.
+        self._monitor_refresh_timer = QTimer(self)
+        self._monitor_refresh_timer.setSingleShot(True)
+        self._monitor_refresh_timer.setInterval(40)
+        self._monitor_refresh_timer.timeout.connect(self.refresh)
+
         self.set_table_filter("All")
-        self.monitor.updated.connect(self.refresh)
+        self.monitor.updated.connect(self.schedule_refresh)
         self.refresh()
 
         saved_app_mode = str(self.settings.value("app_mode", "Exploration"))
@@ -1707,7 +1715,14 @@ class OverlayWindow(QWidget):
             f"<span style='color:#6CB6FF;'>+{delta:,}</span>"
         )
 
+    def schedule_refresh(self) -> None:
+        """Coalesce bursts of monitor signals into one responsive UI refresh."""
+        if not self._monitor_refresh_timer.isActive():
+            self._monitor_refresh_timer.start()
+
     def refresh(self) -> None:
+        if hasattr(self, "_monitor_refresh_timer") and self._monitor_refresh_timer.isActive():
+            self._monitor_refresh_timer.stop()
         state = self.monitor.state
         construction_mode = hasattr(self, "app_mode_combo") and self.app_mode_combo.currentText() == "Construction"
         if construction_mode:
@@ -1834,6 +1849,18 @@ class OverlayWindow(QWidget):
             self.update_info_card(self.target_card, "🔒", "Build System", tracked_system)
             self.update_info_card(self.final_card, "📦", "Next Haul", material_line)
             self.update_info_card(self.event_card, "📍", "Build Location", build_location)
+
+            # Exploration widgets are hidden in Construction mode.  Rebuilding
+            # the full body table (including bio widgets/search evaluation) on
+            # every Cargo/Market/Journal event was wasting the GUI thread and
+            # could make clicks look frozen while a burst of events drained.
+            commander = state.commander or "Unknown"
+            footer_ship = state.ship_name or friendly_ship_name(state.ship)
+            self.footer_left_label.setText(
+                f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
+            )
+            self.footer_version_label.setText(VERSION)
+            return
         else:
             self.update_info_card(self.other_card, "✦", "Other scanned", str(other_scanned_count))
             self.update_info_card(self.high_value_card, "◇", "High-value", str(len(high_value_unmapped)))
@@ -2031,5 +2058,7 @@ class OverlayWindow(QWidget):
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
 
     def closeEvent(self, event) -> None:
+        # Flush any debounced construction-plan/settings writes before exit.
+        self.settings.sync()
         self.monitor.stop()
         event.accept()
