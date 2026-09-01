@@ -165,3 +165,129 @@ class ComprehensiveFacilityRuleTests(unittest.TestCase):
         self.assertEqual(self.catalog.point_cost(coriolis, previous_t2_ports=1), (5, 0))
         self.assertEqual(self.catalog.point_cost(zeus, previous_t3_ports=0), (0, 6))
         self.assertEqual(self.catalog.point_cost(zeus, previous_t3_ports=1), (0, 12))
+
+    def test_current_user_sequence_ends_at_zero_t2_three_t3(self):
+        hephaestus = self.catalog.facility("planetary_outpost_hephaestus")
+        aerecura = self.catalog.facility("settlement_large_mining_aerecura")
+        euthenia = self.catalog.facility("installation_mining_outpost_euthenia")
+        silenus = self.catalog.facility("hub_refinery_silenus")
+        assert hephaestus and aerecura and euthenia and silenus
+        t2 = t3 = 0
+        for facility in (hephaestus, aerecura, euthenia, silenus):
+            cost_t2, cost_t3 = self.catalog.point_cost(facility)
+            t2 -= cost_t2
+            t3 -= cost_t3
+            t2 += facility.provides_tier_2
+            t3 += facility.provides_tier_3
+        self.assertEqual((t2, t3), (0, 3))
+
+    def test_molae_is_blocked_at_zero_t2_three_t3(self):
+        molae = self.catalog.facility("hub_industrial_molae")
+        ourea = self.catalog.facility("settlement_small_mining_ourea")
+        assert molae and ourea
+        self.assertEqual(self.catalog.point_shortfall(molae, 0, 3), (1, 0))
+        self.assertEqual(self.catalog.point_shortfall(ourea, 0, 3), (0, 0))
+
+
+class WholeSystemGoalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.catalog = ColonisationCatalog()
+
+    def test_primary_secondary_merge_includes_orbital_network_support(self):
+        steps = self.catalog.combined_goal_steps(
+            "Expansion Materials Hub",
+            "Tritium Availability",
+        )
+        ids = [facility.id for facility, _reason in steps]
+        self.assertIn("installation_mining_outpost_euthenia", ids)
+        self.assertIn("hub_refinery_silenus", ids)
+        self.assertLess(
+            ids.index("installation_mining_outpost_euthenia"),
+            ids.index("extraction_hub_tartarus"),
+        )
+
+    def test_cosmetic_layout_variants_share_functional_signature(self):
+        aerecura = self.catalog.facility("settlement_large_mining_aerecura")
+        erebus = self.catalog.facility("settlement_large_extraction_settlement_erebus")
+        hephaestus = self.catalog.facility("planetary_outpost_hephaestus")
+        opis = self.catalog.facility("planetary_outpost_opis")
+        assert aerecura and erebus and hephaestus and opis
+        self.assertEqual(
+            self.catalog.functional_signature(aerecura),
+            self.catalog.functional_signature(erebus),
+        )
+        self.assertEqual(
+            self.catalog.functional_signature(hephaestus),
+            self.catalog.functional_signature(opis),
+        )
+
+    def test_port_and_supporting_roles_match_update3_topology_classes(self):
+        vulcan = self.catalog.facility("outpost_industrial_outpost_vulcan")
+        euthenia = self.catalog.facility("installation_mining_outpost_euthenia")
+        tartarus = self.catalog.facility("extraction_hub_tartarus")
+        assert vulcan and euthenia and tartarus
+        self.assertTrue(self.catalog.is_port(vulcan))
+        self.assertFalse(self.catalog.is_supporting_facility(vulcan))
+        self.assertTrue(self.catalog.is_supporting_facility(euthenia))
+        self.assertTrue(self.catalog.is_supporting_facility(tartarus))
+
+    def test_goal_economy_weights_use_both_dropdowns(self):
+        weights = self.catalog.goal_economy_weights(
+            "Expansion Materials Hub",
+            "Tritium Availability",
+        )
+        self.assertGreater(weights.get("extraction", 0), 0)
+        self.assertGreater(weights.get("industrial", 0), 0)
+        self.assertGreater(weights.get("refinery", 0), 0)
+
+class GoalCompletionAndBuildoutTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.catalog = ColonisationCatalog()
+
+    def test_goal_progress_counts_equivalent_layouts_and_multiplicity(self):
+        # Industrial Hub asks for two equivalent Industrial Planetary Outposts.
+        ponos = self.catalog.facility("planetary_outpost_ponos")
+        bia = self.catalog.facility("planetary_outpost_bia")
+        molae = self.catalog.facility("hub_industrial_molae")
+        assert ponos and bia and molae
+        partial = self.catalog.goal_progress(
+            "Industrial Hub",
+            [ponos],
+            primary_port_complete=True,
+        )
+        self.assertEqual(partial["status"], "In progress")
+        self.assertEqual((partial["satisfied"], partial["total"]), (1, 3))
+
+        complete = self.catalog.goal_progress(
+            "Industrial Hub",
+            [ponos, bia, molae],
+            primary_port_complete=True,
+        )
+        self.assertEqual(complete["status"], "Complete")
+        self.assertEqual((complete["satisfied"], complete["total"]), (3, 3))
+
+    def test_buildout_catalog_covers_far_more_than_short_goal_recipe(self):
+        signatures = set()
+        for stage in self.catalog.buildout_stages:
+            for facility in self.catalog.stage_facilities(stage):
+                signatures.add(self.catalog.functional_signature(facility))
+        self.assertGreaterEqual(len(signatures), 30)
+        names = {stage.get("name") for stage in self.catalog.buildout_stages}
+        self.assertIn("Industrial & Commodity Network", names)
+        self.assertIn("Security & Military Network", names)
+        self.assertIn("Science & Research Network", names)
+
+    def test_nearly_complete_goal_aligned_stage_ranks_high(self):
+        industrial_stage = next(
+            stage for stage in self.catalog.buildout_stages
+            if stage.get("name") == "Industrial & Commodity Network"
+        )
+        refs = self.catalog.stage_facilities(industrial_stage)[:-1]
+        ranked = self.catalog.ordered_buildout_stages(
+            "Industrial Hub",
+            "Commodity Profit",
+            refs,
+        )
+        self.assertEqual(ranked[0]["name"], "Industrial & Commodity Network")

@@ -48,7 +48,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.0.4"
+VERSION = "v3.1.0"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -1111,7 +1111,7 @@ class OverlayWindow(QWidget):
 
     def on_current_build_changed(self, facility: str, location: str) -> None:
         self.construction_status_label.setText(
-            f"<span style='color:#60A5FA;'>Focus build</span><br>"
+            f"<span style='color:#60A5FA;'>Current build</span><br>"
             f"<b>{facility}</b><br><span style='color:#9FB0BF;'>{location}</span>"
         )
 
@@ -1274,15 +1274,17 @@ class OverlayWindow(QWidget):
                 f"Build system: {tracked_system}\nCurrent system: {system}"
             )
             material_line, trip_line, source_line = self.construction_panel.focus_material_summary()
+            material_percent = self.construction_panel.focus_material_progress_percent()
             if build_name == "Not selected":
                 self.thin_status_label.setText(
-                    "<b style='color:#F59E0B;'>NO FOCUS BUILD</b>"
+                    "<b style='color:#F59E0B;'>NO BUILD TRACKED</b>"
                     " &nbsp;│&nbsp; Choose one in Overview or Build Queue"
                 )
             else:
                 self.thin_status_label.setText(
                     f"<b style='color:#F59E0B;'>BUILD:</b> {build_name} "
                     f"<span style='color:#9FB0BF;'>— {build_location}</span>"
+                    f" &nbsp;│&nbsp; <b style='color:#60A5FA;'>MAT {material_percent}%</b>"
                     f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
                     f" &nbsp;│&nbsp; {trip_line}"
                     f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
@@ -1725,11 +1727,26 @@ class OverlayWindow(QWidget):
             plan = self.construction_panel.plan
             tracked_system, locked = self.construction_panel.system_lock_state()
             self.set_system_lock_button_style(locked)
+            primary_progress, secondary_progress = self.construction_panel.selected_goal_progress()
+            def status_mark(progress: object) -> str:
+                if not isinstance(progress, dict):
+                    return "—"
+                status = str(progress.get("status", "Not started"))
+                if status == "Complete":
+                    return "✓"
+                if status == "In progress":
+                    return "●"
+                return "○"
+            secondary_name = plan.secondary_goal if plan.secondary_goal != "None" else "None"
+            phase = self.construction_panel.current_development_phase()
             self.construction_goal_summary.setText(
                 f"<span style='color:#9FB0BF;'>Build system:</span> "
                 f"<b style='color:#60A5FA;'>{tracked_system}</b><br>"
-                f"<span style='color:#9FB0BF;'>Goal:</span> "
-                f"<b style='color:#F59E0B;'>{plan.primary_goal}</b>"
+                f"<span style='color:#9FB0BF;'>Goals:</span> "
+                f"<b style='color:#F59E0B;'>{plan.primary_goal} {status_mark(primary_progress)}</b> "
+                f"<span style='color:#9FB0BF;'>•</span> "
+                f"<b style='color:#F59E0B;'>{secondary_name} {status_mark(secondary_progress)}</b><br>"
+                f"<span style='color:#9FB0BF;'>Phase:</span> {phase}"
             )
         self.refresh_thin_view()
 

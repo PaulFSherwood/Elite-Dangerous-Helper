@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "data_version": "2026-08-30-v3.4.1-verified",
+  "data_version": "2026-09-01-v3.0.7",
   "sources": [
     {
       "name": "DaftMav Colonization Construction v3",
@@ -4108,5 +4108,290 @@
       }
     ],
     "Custom Plan": []
-  }
+  },
+  "secondary_goal_map": {
+    "Expansion Support": "Expansion Materials Hub",
+    "Carrier Support": "Carrier Support Hub",
+    "Tritium Availability": "Tritium Production Hub",
+    "Population Growth": "Population Center",
+    "Commodity Profit": "Industrial Hub",
+    "Research Capability": "Research and Technology Hub",
+    "Tourism": "Tourism Hub",
+    "Mining and Refining": "Mining and Refinery Hub",
+    "Balanced Services": "Balanced Colony"
+  },
+  "goal_profiles": {
+    "Expansion Materials Hub": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 5,
+        "Refinery": 3,
+        "High Tech": 2
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Tritium Production Hub": {
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 3
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Carrier Support Hub": {
+      "economies": {
+        "Industrial": 4,
+        "High Tech": 4,
+        "Refinery": 4,
+        "Extraction": 2
+      },
+      "orbital_support": [
+        "installation_communication_station_pistis",
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Industrial Hub": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 3,
+        "Refinery": 2
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Mining and Refinery Hub": {
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 3
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Agricultural Hub": {
+      "economies": {
+        "Agriculture": 5,
+        "Civilian": 3
+      },
+      "orbital_support": [
+        "installation_space_farm_demeter"
+      ]
+    },
+    "Research and Technology Hub": {
+      "economies": {
+        "High Tech": 5,
+        "Research Bio": 5,
+        "Scientific": 4
+      },
+      "orbital_support": [
+        "installation_communication_station_pistis"
+      ]
+    },
+    "Tourism Hub": {
+      "economies": {
+        "Tourism": 5,
+        "Civilian": 3,
+        "Agriculture": 1
+      },
+      "orbital_support": [
+        "installation_satellite_hermes"
+      ]
+    },
+    "Population Center": {
+      "economies": {
+        "Civilian": 5,
+        "Agriculture": 4,
+        "Tourism": 1
+      },
+      "orbital_support": [
+        "installation_space_farm_demeter"
+      ]
+    },
+    "Balanced Colony": {
+      "economies": {
+        "Industrial": 3,
+        "Extraction": 3,
+        "Agriculture": 3,
+        "High Tech": 3,
+        "Tourism": 2,
+        "Refinery": 2
+      },
+      "orbital_support": [
+        "installation_relay_station_enodia"
+      ]
+    },
+    "Custom Plan": {
+      "economies": {},
+      "orbital_support": []
+    }
+  },
+  "buildout_stages": [
+    {
+      "name": "Industrial & Commodity Network",
+      "description": "Broaden industrial production, commodity trade, and mining support after the selected goals are secured.",
+      "priority": 80,
+      "economies": {
+        "Industrial": 5,
+        "Commercial": 4,
+        "Extraction": 2,
+        "Refinery": 2
+      },
+      "facility_ids": [
+        "settlement_small_industrial_settlement_fontus",
+        "settlement_large_industrial_settlement_gaea",
+        "installation_mining_outpost_euthenia",
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "hub_industrial_molae"
+      ]
+    },
+    {
+      "name": "Mining & Refining Network",
+      "description": "Strengthen extraction, refining, and orbital mining support across the system.",
+      "priority": 78,
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 2
+      },
+      "facility_ids": [
+        "settlement_small_mining_ourea",
+        "settlement_large_mining_aerecura",
+        "installation_mining_outpost_euthenia",
+        "extraction_hub_tartarus",
+        "hub_refinery_silenus",
+        "starport_asteroid_base_ice"
+      ]
+    },
+    {
+      "name": "Science & Research Network",
+      "description": "Add scientific ports, research settlements, communications, and orbital research capability.",
+      "priority": 66,
+      "economies": {
+        "Scientific": 5,
+        "Research Bio": 5,
+        "High Tech": 4,
+        "Communication Station": 2
+      },
+      "facility_ids": [
+        "planetary_outpost_necessitas",
+        "settlement_small_scientific_settlement_pheobe",
+        "settlement_large_scientific_settlement_chronos",
+        "installation_communication_station_pistis",
+        "installation_research_station_astraeus",
+        "outpost_scientific_outpost_prometheus",
+        "hub_scientific_athena"
+      ]
+    },
+    {
+      "name": "Agriculture & Population Network",
+      "description": "Develop food, civilian, medical, and government support for a mature colony.",
+      "priority": 62,
+      "economies": {
+        "Agriculture": 5,
+        "Civilian": 5,
+        "Tourism": 1
+      },
+      "facility_ids": [
+        "planetary_outpost_hestia",
+        "settlement_small_agricultural_settlement_consus",
+        "settlement_large_agricultural_settlement_ceres",
+        "installation_space_farm_demeter",
+        "outpost_civilian_outpost_vesta",
+        "installation_medical_asclepius",
+        "installation_government_harmonia",
+        "hub_civilian_aegle"
+      ]
+    },
+    {
+      "name": "Tourism & Services Network",
+      "description": "Add tourism, hospitality, and visitor-support infrastructure once core industry is established.",
+      "priority": 52,
+      "economies": {
+        "Tourism": 5,
+        "Civilian": 3,
+        "Agriculture": 1
+      },
+      "facility_ids": [
+        "installation_satellite_hermes",
+        "settlement_small_tourism_settlement_aergia",
+        "settlement_large_tourism_settlement_fufluns",
+        "installation_tourist_hedone",
+        "installation_space_bar_dionysus",
+        "hub_outpost_io"
+      ]
+    },
+    {
+      "name": "Security & Military Network",
+      "description": "Build a layered military and security chain for a fully developed system.",
+      "priority": 48,
+      "economies": {
+        "Military": 5,
+        "Relay Station": 2
+      },
+      "facility_ids": [
+        "settlement_small_military_settlement_ioke",
+        "settlement_large_military_settlement_minerva",
+        "installation_relay_station_enodia",
+        "installation_security_station_dicaeosyne",
+        "installation_military_vacuna",
+        "outpost_military_outpost_nemesis",
+        "hub_military_alala"
+      ]
+    },
+    {
+      "name": "Exploration & Communications Network",
+      "description": "Improve system communications, exploration support, and distributed orbital coverage.",
+      "priority": 45,
+      "economies": {
+        "Exploration": 5,
+        "Communication Station": 5,
+        "Scientific": 2,
+        "Satellite": 2
+      },
+      "facility_ids": [
+        "installation_communication_station_pistis",
+        "installation_satellite_hermes",
+        "installation_relay_station_enodia",
+        "outpost_scientific_outpost_prometheus",
+        "hub_exploration_tellus"
+      ]
+    },
+    {
+      "name": "Orbital Trade & Port Network",
+      "description": "Add useful orbital ports after supporting economies exist; expensive major ports remain late-stage choices.",
+      "priority": 38,
+      "economies": {
+        "Commercial": 5,
+        "Industrial": 3,
+        "Civilian": 2,
+        "Scientific": 2
+      },
+      "facility_ids": [
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "outpost_civilian_outpost_vesta",
+        "outpost_scientific_outpost_prometheus",
+        "starport_coriolis_no_truss"
+      ]
+    },
+    {
+      "name": "Independent Operations",
+      "description": "Optional late-stage independent/criminal infrastructure for commanders who want broad category coverage.",
+      "priority": 10,
+      "economies": {
+        "Criminal": 2
+      },
+      "facility_ids": [
+        "outpost_criminal_outpost_dysnomia",
+        "installation_pirate_base_apate"
+      ]
+    }
+  ]
 }
