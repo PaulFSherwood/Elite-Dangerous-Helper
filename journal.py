@@ -60,6 +60,7 @@ CARRIER_TRACKING_VERSION_KEY = "construction/carrier_tracking_version"
 CARRIER_TRACKING_VERSION = 2
 OWNED_CARRIER_ID_KEY = "construction/owned_carrier_id"
 MARKET_SOURCES_KEY = "construction/market_sources"
+MARKET_SOURCES_BY_SYSTEM_KEY = "construction/market_sources_by_system"
 
 
 def _settings_int_dict(settings: QSettings, key: str) -> dict[str, int]:
@@ -139,6 +140,21 @@ def load_logistics_data(state: CommanderState, settings: QSettings) -> None:
         if commodity_key(name) and str(location).strip()
     }
 
+    raw_by_system = _settings_json_dict(settings, MARKET_SOURCES_BY_SYSTEM_KEY)
+    by_system: dict[str, dict[str, str]] = {}
+    for name, systems in raw_by_system.items():
+        key = commodity_key(name)
+        if not key or not isinstance(systems, dict):
+            continue
+        cleaned = {
+            str(system).strip(): str(station).strip()
+            for system, station in systems.items()
+            if str(system).strip() and str(station).strip()
+        }
+        if cleaned:
+            by_system[key] = cleaned
+    state.market_sources_by_system = by_system
+
 
 def save_logistics_data(state: CommanderState, settings: QSettings) -> None:
     settings.setValue(CARRIER_TRACKING_VERSION_KEY, CARRIER_TRACKING_VERSION)
@@ -167,6 +183,10 @@ def save_logistics_data(state: CommanderState, settings: QSettings) -> None:
     else:
         settings.setValue(OWNED_CARRIER_ID_KEY, str(state.owned_carrier_id))
     settings.setValue(MARKET_SOURCES_KEY, json.dumps(state.market_sources, sort_keys=True))
+    settings.setValue(
+        MARKET_SOURCES_BY_SYSTEM_KEY,
+        json.dumps(state.market_sources_by_system, sort_keys=True),
+    )
     settings.sync()
 
 
@@ -232,8 +252,21 @@ def _apply_carrier_transfer(state: CommanderState, transfer: dict) -> bool:
 
 
 def apply_ship_snapshot(state: CommanderState, data: dict) -> bool:
-    """Replace ship cargo from Elite's authoritative Cargo/Cargo.json snapshot."""
+    """Replace ship cargo from Elite's authoritative Cargo/Cargo.json snapshot.
+
+    MarketBuy/MarketSell and CargoTransfer can arrive before Cargo.json is
+    rewritten.  Ignore an older snapshot so it cannot temporarily roll the UI
+    back to pre-transaction cargo.
+    """
     if not isinstance(data, dict):
+        return False
+    snapshot_timestamp = str(data.get("timestamp", "") or "")
+    if (
+        state.ship_inventory_last_delta_timestamp
+        and snapshot_timestamp
+        and snapshot_timestamp < state.ship_inventory_last_delta_timestamp
+    ):
+        state.log("Ignored stale ship cargo snapshot")
         return False
     vessel = str(data.get("Vessel", "Ship") or "Ship").strip().lower()
     if vessel != "ship":
@@ -256,7 +289,36 @@ def apply_ship_snapshot(state: CommanderState, data: dict) -> bool:
     changed = inventory != state.ship_inventory or not state.ship_inventory_known
     state.ship_inventory = inventory
     state.ship_inventory_known = True
+    if snapshot_timestamp:
+        state.ship_inventory_last_snapshot_timestamp = snapshot_timestamp
     return changed
+
+
+def _apply_ship_delta(state: CommanderState, commodity: object, count: object, direction: int, timestamp: object = "") -> bool:
+    """Apply immediate live ship-cargo evidence from a journal transaction."""
+    if not state.ship_inventory_known:
+        return False
+    key = commodity_key(commodity)
+    if not key:
+        return False
+    try:
+        amount = max(0, int(count or 0))
+    except (TypeError, ValueError):
+        return False
+    if amount <= 0:
+        return False
+    current = max(0, int(state.ship_inventory.get(key, 0) or 0))
+    updated = max(0, current + direction * amount)
+    if updated:
+        state.ship_inventory[key] = updated
+    else:
+        state.ship_inventory.pop(key, None)
+    stamp = str(timestamp or "")
+    if stamp:
+        state.ship_inventory_last_delta_timestamp = max(
+            state.ship_inventory_last_delta_timestamp, stamp
+        )
+    return updated != current
 
 
 def read_cargo_file(state: CommanderState, journal_dir: Path) -> bool:
@@ -282,12 +344,43 @@ def _market_source_name(data: dict, state: CommanderState) -> str:
     ).strip()
 
 
+def _market_source_system(data: dict, state: CommanderState) -> str:
+    return str(data.get("StarSystem") or state.system or "").strip()
+
+
+def _remember_market_source(
+    state: CommanderState, commodity: object, source: str, system: str
+) -> bool:
+    """Remember that a station sells a commodity, preserving sources per system."""
+    key = commodity_key(commodity)
+    source = str(source or "").strip()
+    system = str(system or "").strip()
+    if not key or not source:
+        return False
+
+    changed = False
+    if system:
+        systems = state.market_sources_by_system.setdefault(key, {})
+        if systems.get(system) != source:
+            systems[system] = source
+            changed = True
+
+    # Market snapshots are discovery evidence, not necessarily where the player
+    # actually bought the item.  Keep the legacy/default source only when empty;
+    # MarketBuy below updates it to the most recent purchase station.
+    if key not in state.market_sources:
+        state.market_sources[key] = source
+        changed = True
+    return changed
+
+
 def apply_market_snapshot(state: CommanderState, data: dict) -> bool:
     """Learn buy locations from Market.json; never treat it as carrier storage."""
     if not isinstance(data, dict):
         return False
 
     source = _market_source_name(data, state)
+    system = _market_source_system(data, state)
     if not source:
         return False
 
@@ -299,20 +392,30 @@ def apply_market_snapshot(state: CommanderState, data: dict) -> bool:
             stock = int(item.get("Stock", 0) or 0)
         except (TypeError, ValueError):
             stock = 0
-        # Positive stock is the important signal: the market has this commodity
-        # available. Price field conventions vary between journal consumers.
-        if stock <= 0:
-            continue
 
         keys = {
             commodity_key(item.get("Name")),
             commodity_key(item.get("Name_Localised")),
         }
         for key in keys:
-            if not key or key in state.market_sources:
+            if not key:
                 continue
-            state.market_sources[key] = source
-            changed = True
+            if stock > 0:
+                if _remember_market_source(state, key, source, system):
+                    changed = True
+                continue
+
+            # If a refreshed Market.json says this exact remembered station has
+            # no stock, stop advertising it as a local source.  We intentionally
+            # leave the generic last-purchase source alone: that is history, not
+            # a claim that the station currently has stock.
+            if system:
+                systems = state.market_sources_by_system.get(key, {})
+                if systems.get(system) == source:
+                    systems.pop(system, None)
+                    if not systems:
+                        state.market_sources_by_system.pop(key, None)
+                    changed = True
 
     return changed
 
@@ -1045,12 +1148,28 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         # separately supplies the ship side of the same transfer.
         if state.live_updates_enabled:
             transfer_changed = False
+            ship_changed = False
             for transfer in event.get("Transfers", []) or []:
-                if isinstance(transfer, dict) and _apply_carrier_transfer(state, transfer):
+                if not isinstance(transfer, dict):
+                    continue
+                if _apply_carrier_transfer(state, transfer):
                     transfer_changed = True
+                direction = str(transfer.get("Direction", "")).strip().lower()
+                ship_direction = 1 if direction == "toship" else -1 if direction == "tocarrier" else 0
+                if ship_direction and _apply_ship_delta(
+                    state,
+                    transfer.get("Type_Localised") or transfer.get("Type"),
+                    transfer.get("Count", 0),
+                    ship_direction,
+                    event.get("timestamp", ""),
+                ):
+                    ship_changed = True
             _mark_carrier_watermark(state, event)
             if transfer_changed:
                 state.log("Carrier cargo updated from transfer")
+            if ship_changed:
+                state.log("Ship cargo updated from transfer")
+            if transfer_changed or ship_changed:
                 changed = True
 
     elif name == "Market":
@@ -1063,16 +1182,45 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         changed = True
 
     elif name == "MarketBuy":
-        # Buying is direct evidence that this station sells the commodity. Fill
-        # only a source we have not learned before; the UI separately protects
-        # user-entered Material Source cells from replacement.
+        # Buying is direct evidence that this station sells the commodity. Update
+        # ship cargo immediately as well; Cargo.json may lag the journal event.
         if state.live_updates_enabled:
-            key = commodity_key(event.get("Type_Localised") or event.get("Type"))
+            commodity = event.get("Type_Localised") or event.get("Type")
+            key = commodity_key(commodity)
             source = _market_source_name(event, state)
-            if key and source and key not in state.market_sources:
+            system = _market_source_system(event, state)
+            if key and source:
+                # A purchase is stronger evidence than an old pasted/discovered
+                # source.  Keep the latest purchase station so stale external
+                # names naturally refresh.  Per-system history is retained so a
+                # known local colony source still wins in the Materials view.
+                previous = state.market_sources.get(key)
                 state.market_sources[key] = source
-                state.log(f"Material source learned: {source}")
+                source_changed = previous != source
+                if system:
+                    systems = state.market_sources_by_system.setdefault(key, {})
+                    if systems.get(system) != source:
+                        systems[system] = source
+                        source_changed = True
+                if source_changed:
+                    state.log(f"Material source updated: {source}")
+                    changed = True
+            if _apply_ship_delta(
+                state, commodity, event.get("Count", 0), 1, event.get("timestamp", "")
+            ):
+                state.log("Ship cargo updated from market purchase")
                 changed = True
+
+    elif name == "MarketSell":
+        if state.live_updates_enabled and _apply_ship_delta(
+            state,
+            event.get("Type_Localised") or event.get("Type"),
+            event.get("Count", 0),
+            -1,
+            event.get("timestamp", ""),
+        ):
+            state.log("Ship cargo updated from market sale")
+            changed = True
 
     elif name in ("FSDJump", "CarrierJump"):
         set_system(state, event.get("StarSystem"), event.get("SystemAddress"), clear=True)
@@ -1498,6 +1646,9 @@ def apply_event(state: CommanderState, event: dict) -> bool:
 
 class JournalMonitor(QObject):
     updated = pyqtSignal()
+    startup_progress = pyqtSignal(str)
+    startup_finished = pyqtSignal()
+    startup_failed = pyqtSignal(str)
 
     def __init__(self, journal_dir: Path, history_files: int = 30):
         super().__init__()
@@ -1515,9 +1666,11 @@ class JournalMonitor(QObject):
         self.position = 0
         self.lock = threading.Lock()
         self.observer: Optional[Observer] = None
+        self._startup_thread: Optional[threading.Thread] = None
 
     def initialize(self) -> None:
         self.state.live_updates_enabled = False
+        self.startup_progress.emit("Finding Elite journal files…")
         self.current_file = newest_journal_file(self.journal_dir)
         if not self.current_file:
             raise FileNotFoundError(f"No Journal*.log files found in {self.journal_dir}")
@@ -1527,11 +1680,13 @@ class JournalMonitor(QObject):
             key=lambda p: p.stat().st_mtime
         )
 
+        self.startup_progress.emit("Indexing exploration history…")
         files_indexed, completion_keys_added = index_fss_history(
             self.state,
             self.settings,
             self.journal_dir,
         )
+        self.startup_progress.emit("Indexing construction bodies and system sites…")
         body_files_indexed, bodies_added = index_construction_body_history(
             self.state,
             self.settings,
@@ -1548,6 +1703,7 @@ class JournalMonitor(QObject):
                 f"{bodies_added} bodies added"
             )
 
+        self.startup_progress.emit("Restoring carrier and logistics state…")
         carrier_files, transfer_events, purchase_baseline = restore_carrier_tracking(
             self.state, self.journal_dir
         )
@@ -1566,6 +1722,7 @@ class JournalMonitor(QObject):
             self.state.log("Carrier cargo baseline pending")
 
         journals_to_read = journals[-self.history_files:]
+        self.startup_progress.emit(f"Reading {len(journals_to_read)} recent journal files…")
 
         for journal_path in journals_to_read:
             with journal_path.open("r", encoding="utf-8", errors="replace") as f:
@@ -1585,6 +1742,7 @@ class JournalMonitor(QObject):
 
         self.position = self.current_file.stat().st_size
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
+        self.startup_progress.emit("Loading route, Cargo.json, and Market.json…")
         read_nav_route(self.state, self.journal_dir)
         read_cargo_file(self.state, self.journal_dir)
         if read_market_file(self.state, self.journal_dir):
@@ -1698,8 +1856,35 @@ class JournalMonitor(QObject):
                 # save_state_snapshot(self.db, self.state)
                 self.updated.emit()
 
+    def start_async(self) -> None:
+        """Load history off the GUI thread, then start live monitoring.
+
+        Startup used to run before the main window was shown, which made a
+        perfectly healthy launch look like the application never opened.
+        Journal parsing is file/JSON work and does not need to block Qt's GUI
+        event loop, so keep the window responsive while it is reconstructed.
+        """
+        if self._startup_thread is not None and self._startup_thread.is_alive():
+            return
+
+        def runner() -> None:
+            try:
+                self.start()
+            except Exception as exc:
+                self.startup_failed.emit(str(exc))
+                return
+            self.startup_finished.emit()
+
+        self._startup_thread = threading.Thread(
+            target=runner,
+            name="observatory-startup",
+            daemon=True,
+        )
+        self._startup_thread.start()
+
     def start(self) -> None:
         self.initialize()
+        self.startup_progress.emit("Starting live journal monitor…")
 
         if WATCHDOG_AVAILABLE:
             monitor = self

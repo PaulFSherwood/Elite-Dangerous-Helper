@@ -1,6 +1,23 @@
 {
-  "schema_version": 1,
-  "notes": "Initial player-verified seed for Elite Dangerous system colonisation planning. Values marked player_note or unverified should be checked in game before treating the plan as authoritative.",
+  "schema_version": 2,
+  "data_version": "2026-09-01-v3.0.7",
+  "sources": [
+    {
+      "name": "DaftMav Colonization Construction v3",
+      "version": "3.4.1",
+      "role": "community-maintained facility stats/prerequisites/layout variants"
+    },
+    {
+      "name": "EDCPS buildings.ts",
+      "refreshed": "2026-07-23",
+      "role": "machine-readable cross-check of DaftMav data and port escalation rules"
+    },
+    {
+      "name": "Player in-game screenshots / notes",
+      "date": "2026-08-29/30",
+      "role": "direct confirmation of selected layouts, costs/rewards and market-link labels"
+    }
+  ],
   "facilities": [
     {
       "id": "primary_port",
@@ -10,6 +27,10 @@
       "tier": 1,
       "site_type": "orbital",
       "economy": "System Economy",
+      "market_economy": "",
+      "construction_tonnage": 0,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -21,18 +42,27 @@
         }
       },
       "verification": {
-        "status": "known_required_first"
+        "status": "planner_placeholder",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "The first completed port for an established colony. Existing systems should mark this complete instead of queueing another primary port."
+      "notes": "Existing claim/primary station. It is exempt from the escalating non-primary port construction-point curves.",
+      "aliases": [
+        "Starter Port / Primary Port"
+      ]
     },
     {
-      "id": "planetary_outpost_hephaestus",
-      "name": "Hephaestus",
+      "id": "planetary_outpost_hestia",
+      "name": "Hestia",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Civilian Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
-      "economy": "Industrial",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 10,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -44,11 +74,203 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3",
-        "materials_status": "observed_inara_2026_07_26"
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation. Material requirements seeded from the Alvarez Works construction depot observed in Nyeakua GG-D b4-1; confirm against live journal when possible.",
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Hestia"
+      ]
+    },
+    {
+      "id": "planetary_outpost_decima",
+      "name": "Decima",
+      "facility_type": "Planetary Port",
+      "category": "Civilian Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Decima"
+      ]
+    },
+    {
+      "id": "planetary_outpost_atropos",
+      "name": "Atropos",
+      "facility_type": "Planetary Port",
+      "category": "Civilian Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Atropos"
+      ]
+    },
+    {
+      "id": "planetary_outpost_nona",
+      "name": "Nona",
+      "facility_type": "Planetary Port",
+      "category": "Civilian Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Nona"
+      ]
+    },
+    {
+      "id": "planetary_outpost_lachesis",
+      "name": "Lachesis",
+      "facility_type": "Planetary Port",
+      "category": "Civilian Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Lachesis"
+      ]
+    },
+    {
+      "id": "planetary_outpost_clotho",
+      "name": "Clotho",
+      "facility_type": "Planetary Port",
+      "category": "Civilian Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Civilian Planetary Outpost / Clotho"
+      ]
+    },
+    {
+      "id": "planetary_outpost_hephaestus",
+      "name": "Hephaestus",
+      "facility_type": "Planetary Port",
+      "category": "Industrial Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 10,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
       "materials": [
         {
           "commodity": "Aluminium",
@@ -142,16 +364,23 @@
           "commodity": "Titanium",
           "required": 5760
         }
+      ],
+      "aliases": [
+        "Industrial Planetary Outpost / Hephaestus"
       ]
     },
     {
       "id": "planetary_outpost_opis",
       "name": "Opis",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Industrial Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -163,19 +392,27 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Industrial Planetary Outpost / Opis"
+      ]
     },
     {
       "id": "planetary_outpost_ponos",
       "name": "Ponos",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Industrial Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -187,19 +424,27 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Industrial Planetary Outpost / Ponos"
+      ]
     },
     {
       "id": "planetary_outpost_tethys",
       "name": "Tethys",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Industrial Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -211,19 +456,27 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Industrial Planetary Outpost / Tethys"
+      ]
     },
     {
       "id": "planetary_outpost_bia",
       "name": "Bia",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Industrial Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -235,19 +488,27 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Industrial Planetary Outpost / Bia"
+      ]
     },
     {
       "id": "planetary_outpost_mefitis",
       "name": "Mefitis",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Industrial Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -259,43 +520,27 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis Industrial per player observation."
-    },
-    {
-      "id": "planetary_outpost_hestia",
-      "name": "Hestia",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Industrial Planetary Outpost / Mefitis"
+      ]
     },
     {
       "id": "planetary_outpost_necessitas",
       "name": "Necessitas",
       "facility_type": "Planetary Port",
-      "category": "Outpost",
+      "category": "Scientific Planetary Outpost",
       "tier": 1,
       "site_type": "surface",
       "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 10,
       "construction_points": {
         "requires": {
           "tier_2": 0,
@@ -307,19 +552,996 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Market links to Genesis High Tech per player observation."
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Necessitas"
+      ]
     },
     {
-      "id": "extraction_hub_tartarus",
-      "name": "Tartarus",
-      "facility_type": "Hub",
-      "category": "Extraction",
+      "id": "planetary_outpost_ananke",
+      "name": "Ananke",
+      "facility_type": "Planetary Port",
+      "category": "Scientific Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Ananke"
+      ]
+    },
+    {
+      "id": "planetary_outpost_fauna",
+      "name": "Fauna",
+      "facility_type": "Planetary Port",
+      "category": "Scientific Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Fauna"
+      ]
+    },
+    {
+      "id": "planetary_outpost_providentia",
+      "name": "Providentia",
+      "facility_type": "Planetary Port",
+      "category": "Scientific Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Providentia"
+      ]
+    },
+    {
+      "id": "planetary_outpost_antevorta",
+      "name": "Antevorta",
+      "facility_type": "Planetary Port",
+      "category": "Scientific Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Antevorta"
+      ]
+    },
+    {
+      "id": "planetary_outpost_porrima",
+      "name": "Porrima",
+      "facility_type": "Planetary Port",
+      "category": "Scientific Planetary Outpost",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 36829,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-1 planetary outpost: no construction-point cost; awards +1 T2 when complete.",
+      "aliases": [
+        "Scientific Planetary Outpost / Porrima"
+      ]
+    },
+    {
+      "id": "tier3_port_zeus",
+      "name": "Zeus",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 216030,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-3 planetary port. Non-primary T3-port cost follows the system-wide 6, 12, 18, ... T3 curve.",
+      "aliases": [
+        "Planetary Port / Zeus"
+      ]
+    },
+    {
+      "id": "tier3_port_hera",
+      "name": "Hera",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 216030,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-3 planetary port. Non-primary T3-port cost follows the system-wide 6, 12, 18, ... T3 curve.",
+      "aliases": [
+        "Planetary Port / Hera"
+      ]
+    },
+    {
+      "id": "tier3_port_poseidon",
+      "name": "Poseidon",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 216030,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-3 planetary port. Non-primary T3-port cost follows the system-wide 6, 12, 18, ... T3 curve.",
+      "aliases": [
+        "Planetary Port / Poseidon"
+      ]
+    },
+    {
+      "id": "tier3_port_aphrodite",
+      "name": "Aphrodite",
+      "facility_type": "Planetary Port",
+      "category": "Planetary Port",
+      "tier": 3,
+      "site_type": "surface",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 216030,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Tier-3 planetary port. Non-primary T3-port cost follows the system-wide 6, 12, 18, ... T3 curve.",
+      "aliases": [
+        "Planetary Port / Aphrodite"
+      ]
+    },
+    {
+      "id": "settlement_small_agricultural_settlement_consus",
+      "name": "Consus",
+      "facility_type": "Settlement",
+      "category": "Small Agricultural Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Agriculture",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 2839,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Small Agricultural Settlement / Consus",
+        "Small Agricultural Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_agricultural_settlement_picumnus",
+      "name": "Picumnus",
+      "facility_type": "Settlement",
+      "category": "Small Agricultural Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Agriculture",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 5678,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Agricultural Settlement / Picumnus",
+        "Medium Agricultural Settlement",
+        "Picumnus",
+        "Small Agricultural Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_agricultural_settlement_annona",
+      "name": "Annona",
+      "facility_type": "Settlement",
+      "category": "Small Agricultural Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Agriculture",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 5678,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Agricultural Settlement / Annona",
+        "Medium Agricultural Settlement",
+        "Annona",
+        "Small Agricultural Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_agricultural_settlement_ceres",
+      "name": "Ceres",
+      "facility_type": "Settlement",
+      "category": "Large Agricultural Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Agriculture",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 8517,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Agricultural Settlement / Ceres",
+        "Large Agricultural Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_agricultural_settlement_fornax",
+      "name": "Fornax",
+      "facility_type": "Settlement",
+      "category": "Large Agricultural Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Agriculture",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 8517,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Agricultural Settlement / Fornax",
+        "Large Agricultural Settlement"
+      ]
+    },
+    {
+      "id": "settlement_small_mining_ourea",
+      "name": "Ourea",
+      "facility_type": "Settlement",
+      "category": "Small Mining Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 2845,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 5,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Player screenshot confirmed: Small Mining Settlement, no point cost, awards +1 T2, Extraction link.",
+      "aliases": [
+        "Small Mining Settlement / Ourea",
+        "Small Mining Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_extraction_settlement_mantus",
+      "name": "Mantus",
+      "facility_type": "Settlement",
+      "category": "Small Mining Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 5690,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Mining Settlement / Mantus",
+        "Medium Mining Settlement",
+        "Mantus",
+        "Small Mining Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_extraction_settlement_orcus",
+      "name": "Orcus",
+      "facility_type": "Settlement",
+      "category": "Small Mining Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 5690,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Mining Settlement / Orcus",
+        "Medium Mining Settlement",
+        "Orcus",
+        "Small Mining Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_extraction_settlement_erebus",
+      "name": "Erebus",
+      "facility_type": "Settlement",
+      "category": "Large Mining Settlement",
       "tier": 2,
       "site_type": "surface",
       "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 8535,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Mining Settlement / Erebus",
+        "Large Mining Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_mining_aerecura",
+      "name": "Aerecura",
+      "facility_type": "Settlement",
+      "category": "Large Mining Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 8535,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 10,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Player screenshot confirmed: Large Mining Settlement, costs 1 T2, awards +2 T3, Extraction link.",
+      "aliases": [
+        "Large Mining Settlement / Aerecura",
+        "Large Mining Settlement"
+      ]
+    },
+    {
+      "id": "settlement_small_industrial_settlement_fontus",
+      "name": "Fontus",
+      "facility_type": "Settlement",
+      "category": "Small Industrial Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 2845,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Small Industrial Settlement / Fontus",
+        "Small Industrial Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_industrial_settlement_meteope",
+      "name": "Metope",
+      "facility_type": "Settlement",
+      "category": "Small Industrial Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 5690,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Industrial Settlement / Meteope",
+        "Medium Industrial Settlement",
+        "Metope",
+        "Meteope",
+        "Small Industrial Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_industrial_settlement_palici",
+      "name": "Palici",
+      "facility_type": "Settlement",
+      "category": "Small Industrial Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 5690,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Industrial Settlement / Palici",
+        "Medium Industrial Settlement",
+        "Palici",
+        "Small Industrial Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_industrial_settlement_minthe",
+      "name": "Minthe",
+      "facility_type": "Settlement",
+      "category": "Small Industrial Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 5690,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Industrial Settlement / Minthe",
+        "Medium Industrial Settlement",
+        "Minthe",
+        "Small Industrial Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_industrial_settlement_gaea",
+      "name": "Gaea",
+      "facility_type": "Settlement",
+      "category": "Large Industrial Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 8535,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Industrial Settlement / Gaea",
+        "Large Industrial Settlement"
+      ]
+    },
+    {
+      "id": "settlement_small_military_settlement_ioke",
+      "name": "Ioke",
+      "facility_type": "Settlement",
+      "category": "Small Military Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 2842,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Small Military Settlement / Ioke",
+        "Small Military Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_military_settlement_bellona",
+      "name": "Bellona",
+      "facility_type": "Settlement",
+      "category": "Small Military Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 5684,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Military Settlement / Bellona",
+        "Medium Military Settlement",
+        "Bellona",
+        "Small Military Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_military_settlement_enyo",
+      "name": "Enyo",
+      "facility_type": "Settlement",
+      "category": "Small Military Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 5684,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Military Settlement / Enyo",
+        "Medium Military Settlement",
+        "Enyo",
+        "Small Military Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_military_settlement_polemos",
+      "name": "Polemos",
+      "facility_type": "Settlement",
+      "category": "Small Military Settlement",
+      "tier": 1,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 5684,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Military Settlement / Polemos",
+        "Medium Military Settlement",
+        "Polemos",
+        "Small Military Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_military_settlement_minerva",
+      "name": "Minerva",
+      "facility_type": "Settlement",
+      "category": "Large Military Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 8526,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Military Settlement / Minerva",
+        "Large Military Settlement"
+      ]
+    },
+    {
+      "id": "settlement_small_scientific_settlement_pheobe",
+      "name": "Pheobe",
+      "facility_type": "Settlement",
+      "category": "Small Scientific Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Research Bio",
+      "market_economy": "High Tech",
+      "construction_tonnage": 2841,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 1,
@@ -331,23 +1553,2221 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Player noted that Extraction Hub Tartarus gives Tier 3 construction points. Exact requirement still needs confirmation."
+      "notes": "",
+      "aliases": [
+        "Small Scientific Settlement / Pheobe",
+        "Small Scientific Settlement"
+      ]
     },
     {
-      "id": "tier3_port_zeus",
-      "name": "Zeus",
-      "facility_type": "Planetary Port",
-      "category": "Planetary Port",
+      "id": "settlement_medium_scientific_settlement_asteria",
+      "name": "Asteria",
+      "facility_type": "Settlement",
+      "category": "Medium Scientific Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Research Bio",
+      "market_economy": "High Tech",
+      "construction_tonnage": 5682,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Scientific Settlement / Asteria",
+        "Medium Scientific Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_scientific_settlement_caerus",
+      "name": "Caerus",
+      "facility_type": "Settlement",
+      "category": "Medium Scientific Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Research Bio",
+      "market_economy": "High Tech",
+      "construction_tonnage": 5682,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medium Scientific Settlement / Caerus",
+        "Medium Scientific Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_scientific_settlement_chronos",
+      "name": "Chronos",
+      "facility_type": "Settlement",
+      "category": "Large Scientific Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Research Bio",
+      "market_economy": "High Tech",
+      "construction_tonnage": 8523,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Large Scientific Settlement / Chronos",
+        "Large Scientific Settlement"
+      ]
+    },
+    {
+      "id": "settlement_small_tourism_settlement_aergia",
+      "name": "Aergia",
+      "facility_type": "Settlement",
+      "category": "Small Tourism Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Tourism",
+      "market_economy": "Tourism",
+      "construction_tonnage": 2846,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Satellite"
+        }
+      ],
+      "aliases": [
+        "Small Tourism Settlement / Aergia",
+        "Small Tourism Settlement"
+      ]
+    },
+    {
+      "id": "settlement_medium_tourism_settlement_comos",
+      "name": "Comus",
+      "facility_type": "Settlement",
+      "category": "Medium Tourism Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Tourism",
+      "market_economy": "Tourism",
+      "construction_tonnage": 5692,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Satellite"
+        }
+      ],
+      "aliases": [
+        "Medium Tourism Settlement / Comos",
+        "Medium Tourism Settlement",
+        "Comus",
+        "Comos"
+      ]
+    },
+    {
+      "id": "settlement_medium_tourism_settlement_gelos",
+      "name": "Gelos",
+      "facility_type": "Settlement",
+      "category": "Medium Tourism Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Tourism",
+      "market_economy": "Tourism",
+      "construction_tonnage": 5692,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Satellite"
+        }
+      ],
+      "aliases": [
+        "Medium Tourism Settlement / Gelos",
+        "Medium Tourism Settlement"
+      ]
+    },
+    {
+      "id": "settlement_large_tourism_settlement_fufluns",
+      "name": "Fufluns",
+      "facility_type": "Settlement",
+      "category": "Large Tourism Settlement",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Tourism",
+      "market_economy": "Tourism",
+      "construction_tonnage": 8538,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 2
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Satellite"
+        }
+      ],
+      "aliases": [
+        "Large Tourism Settlement / Fufluns",
+        "Large Tourism Settlement"
+      ]
+    },
+    {
+      "id": "extraction_hub_tartarus",
+      "name": "Tartarus",
+      "facility_type": "Hub",
+      "category": "Extraction",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Extraction",
+      "market_economy": "Extraction",
+      "construction_tonnage": 9893,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "player_and_community_verified",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "Extraction Hub: costs 1 T2, awards +1 T3, requires any completed Extraction Settlement (small, medium, or large).",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Extraction"
+        }
+      ],
+      "aliases": [
+        "Extraction / Tartarus"
+      ]
+    },
+    {
+      "id": "hub_civilian_aegle",
+      "name": "Aegle",
+      "facility_type": "Hub",
+      "category": "Civilian",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Civilian",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 9772,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Agriculture"
+        }
+      ],
+      "aliases": [
+        "Civilian / Aegle"
+      ]
+    },
+    {
+      "id": "hub_exploration_tellus",
+      "name": "Tellus",
+      "facility_type": "Hub",
+      "category": "Exploration",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Exploration",
+      "market_economy": "Tourism",
+      "construction_tonnage": 9923,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Communication Station"
+        }
+      ],
+      "aliases": [
+        "Tellus A",
+        "Exploration / Tellus"
+      ]
+    },
+    {
+      "id": "hub_outpost_io",
+      "name": "Io",
+      "facility_type": "Hub",
+      "category": "Outpost",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Outpost",
+      "market_economy": "",
+      "construction_tonnage": 9198,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Space Farm"
+        }
+      ],
+      "aliases": [
+        "Outpost / Io"
+      ]
+    },
+    {
+      "id": "hub_scientific_athena",
+      "name": "Athena",
+      "facility_type": "Hub",
+      "category": "Scientific",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 9924,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Scientific / Athena"
+      ]
+    },
+    {
+      "id": "hub_scientific_caelus",
+      "name": "Caelus",
+      "facility_type": "Hub",
+      "category": "Scientific",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Scientific",
+      "market_economy": "High Tech",
+      "construction_tonnage": 9924,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Scientific / Caelus"
+      ]
+    },
+    {
+      "id": "hub_military_alala",
+      "name": "Alala",
+      "facility_type": "Hub",
+      "category": "Military",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 9922,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Military"
+        }
+      ],
+      "aliases": [
+        "Military / Alala"
+      ]
+    },
+    {
+      "id": "hub_military_ares",
+      "name": "Ares",
+      "facility_type": "Hub",
+      "category": "Military",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 9922,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Military"
+        }
+      ],
+      "aliases": [
+        "Military / Ares"
+      ]
+    },
+    {
+      "id": "hub_refinery_silenus",
+      "name": "Silenus",
+      "facility_type": "Hub",
+      "category": "Refinery",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Refinery",
+      "market_economy": "Refinery",
+      "construction_tonnage": 9919,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Refinery / Silenus"
+      ]
+    },
+    {
+      "id": "hub_high_tech_janus",
+      "name": "Janus",
+      "facility_type": "Hub",
+      "category": "High Tech",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "High Tech",
+      "market_economy": "High Tech",
+      "construction_tonnage": 9921,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "High Tech / Janus"
+      ]
+    },
+    {
+      "id": "hub_industrial_molae",
+      "name": "Molae",
+      "facility_type": "Hub",
+      "category": "Industrial",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 9753,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Mining Outpost"
+        }
+      ],
+      "aliases": [
+        "Industrial / Molae"
+      ]
+    },
+    {
+      "id": "hub_industrial_tellus",
+      "name": "Tellus",
+      "facility_type": "Hub",
+      "category": "Industrial",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 9753,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Mining Outpost"
+        }
+      ],
+      "aliases": [
+        "Tellus B",
+        "Industrial / Tellus"
+      ]
+    },
+    {
+      "id": "hub_industrial_eunostus",
+      "name": "Eunostus",
+      "facility_type": "Hub",
+      "category": "Industrial",
+      "tier": 2,
+      "site_type": "surface",
+      "economy": "Industrial",
+      "market_economy": "Industrial",
+      "construction_tonnage": 9753,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Mining Outpost"
+        }
+      ],
+      "aliases": [
+        "Industrial / Eunostus"
+      ]
+    },
+    {
+      "id": "outpost_commercial_outpost_plutus",
+      "name": "Plutus",
+      "facility_type": "Outpost",
+      "category": "Commercial Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Commercial",
+      "market_economy": "",
+      "construction_tonnage": 18988,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Commercial Outpost / Plutus"
+      ]
+    },
+    {
+      "id": "outpost_industrial_outpost_vulcan",
+      "name": "Vulcan",
+      "facility_type": "Outpost",
+      "category": "Industrial Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Industrial",
+      "market_economy": "",
+      "construction_tonnage": 18987,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Industrial Outpost / Vulcan"
+      ]
+    },
+    {
+      "id": "outpost_criminal_outpost_dysnomia",
+      "name": "Dysnomia",
+      "facility_type": "Outpost",
+      "category": "Criminal Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Criminal",
+      "market_economy": "",
+      "construction_tonnage": 18988,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Criminal Outpost / Dysnomia"
+      ]
+    },
+    {
+      "id": "outpost_civilian_outpost_vesta",
+      "name": "Vesta",
+      "facility_type": "Outpost",
+      "category": "Civilian Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Civilian",
+      "market_economy": "",
+      "construction_tonnage": 18988,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Civilian Outpost / Vesta"
+      ]
+    },
+    {
+      "id": "outpost_scientific_outpost_prometheus",
+      "name": "Prometheus",
+      "facility_type": "Outpost",
+      "category": "Scientific Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Scientific",
+      "market_economy": "",
+      "construction_tonnage": 18988,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Scientific Outpost / Prometheus"
+      ]
+    },
+    {
+      "id": "outpost_military_outpost_nemesis",
+      "name": "Nemesis",
+      "facility_type": "Outpost",
+      "category": "Military Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Military",
+      "market_economy": "",
+      "construction_tonnage": 18988,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Military Outpost / Nemesis"
+      ]
+    },
+    {
+      "id": "installation_satellite_hermes",
+      "name": "Hermes",
+      "facility_type": "Installation",
+      "category": "Satellite",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Satellite",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Satellite / Hermes"
+      ]
+    },
+    {
+      "id": "installation_satellite_angelia",
+      "name": "Angelia",
+      "facility_type": "Installation",
+      "category": "Satellite",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Satellite",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Satellite / Angelia"
+      ]
+    },
+    {
+      "id": "installation_satellite_eirene",
+      "name": "Eirene",
+      "facility_type": "Installation",
+      "category": "Satellite",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Satellite",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Satellite / Eirene"
+      ]
+    },
+    {
+      "id": "installation_communication_station_pistis",
+      "name": "Pistis",
+      "facility_type": "Installation",
+      "category": "Communication Station",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Communication Station",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Communication Station / Pistis"
+      ]
+    },
+    {
+      "id": "installation_communication_station_soter",
+      "name": "Soter",
+      "facility_type": "Installation",
+      "category": "Communication Station",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Communication Station",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Communication Station / Soter"
+      ]
+    },
+    {
+      "id": "installation_communication_station_aletheia",
+      "name": "Aletheia",
+      "facility_type": "Installation",
+      "category": "Communication Station",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Communication Station",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Communication Station / Aletheia"
+      ]
+    },
+    {
+      "id": "installation_space_farm_demeter",
+      "name": "Demeter",
+      "facility_type": "Installation",
+      "category": "Space Farm",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Space Farm",
+      "market_economy": "Agriculture",
+      "construction_tonnage": 6722,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Space Farm / Demeter"
+      ]
+    },
+    {
+      "id": "installation_pirate_base_apate",
+      "name": "Apate",
+      "facility_type": "Installation",
+      "category": "Pirate Base",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Pirate Base / Apate"
+      ]
+    },
+    {
+      "id": "installation_pirate_base_laverna",
+      "name": "Laverna",
+      "facility_type": "Installation",
+      "category": "Pirate Base",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Pirate Base / Laverna"
+      ]
+    },
+    {
+      "id": "installation_mining_outpost_euthenia",
+      "name": "Euthenia",
+      "facility_type": "Installation",
+      "category": "Mining Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Mining Outpost",
+      "market_economy": "Extraction",
+      "construction_tonnage": 6723,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Mining Outpost / Euthenia"
+      ]
+    },
+    {
+      "id": "installation_mining_outpost_phorcys",
+      "name": "Phorcys",
+      "facility_type": "Installation",
+      "category": "Mining Outpost",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Mining Outpost",
+      "market_economy": "Extraction",
+      "construction_tonnage": 6723,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Mining Outpost / Phorcys"
+      ]
+    },
+    {
+      "id": "installation_relay_station_enodia",
+      "name": "Enodia",
+      "facility_type": "Installation",
+      "category": "Relay Station",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Relay Station",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Relay Station / Enodia"
+      ]
+    },
+    {
+      "id": "installation_relay_station_ichnaea",
+      "name": "Ichnaea",
+      "facility_type": "Installation",
+      "category": "Relay Station",
+      "tier": 1,
+      "site_type": "orbital",
+      "economy": "Relay Station",
+      "market_economy": "",
+      "construction_tonnage": 6721,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 1,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Relay Station / Ichnaea"
+      ]
+    },
+    {
+      "id": "installation_military_vacuna",
+      "name": "Vacuna",
+      "facility_type": "Installation",
+      "category": "Military",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 10080,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Military"
+        }
+      ],
+      "aliases": [
+        "Military / Vacuna"
+      ]
+    },
+    {
+      "id": "installation_military_alastor",
+      "name": "Alastor",
+      "facility_type": "Installation",
+      "category": "Military",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Military",
+      "market_economy": "Military",
+      "construction_tonnage": 10080,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Military"
+        }
+      ],
+      "aliases": [
+        "Military / Alastor"
+      ]
+    },
+    {
+      "id": "installation_security_station_dicaeosyne",
+      "name": "Dicaeosyne",
+      "facility_type": "Installation",
+      "category": "Security Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10082,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Relay Station"
+        }
+      ],
+      "aliases": [
+        "Security Station / Dicaeosyne"
+      ]
+    },
+    {
+      "id": "installation_security_station_poena",
+      "name": "Poena",
+      "facility_type": "Installation",
+      "category": "Security Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10082,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Relay Station"
+        }
+      ],
+      "aliases": [
+        "Security Station / Poena"
+      ]
+    },
+    {
+      "id": "installation_security_station_eunomia",
+      "name": "Eunomia",
+      "facility_type": "Installation",
+      "category": "Security Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10082,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Relay Station"
+        }
+      ],
+      "aliases": [
+        "Security Station / Eunomia"
+      ]
+    },
+    {
+      "id": "installation_security_station_nomos",
+      "name": "Nomos",
+      "facility_type": "Installation",
+      "category": "Security Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10082,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Installation",
+          "category": "Relay Station"
+        }
+      ],
+      "aliases": [
+        "Security Station / Nomos"
+      ]
+    },
+    {
+      "id": "installation_government_harmonia",
+      "name": "Harmonia",
+      "facility_type": "Installation",
+      "category": "Government",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10077,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Government / Harmonia"
+      ]
+    },
+    {
+      "id": "installation_medical_asclepius",
+      "name": "Asclepius",
+      "facility_type": "Installation",
+      "category": "Medical",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10081,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medical / Asclepius"
+      ]
+    },
+    {
+      "id": "installation_medical_eupraxia",
+      "name": "Eupraxia",
+      "facility_type": "Installation",
+      "category": "Medical",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10081,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Medical / Eupraxia"
+      ]
+    },
+    {
+      "id": "installation_research_station_astraeus",
+      "name": "Astraeus",
+      "facility_type": "Installation",
+      "category": "Research Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Research Station",
+      "market_economy": "High Tech",
+      "construction_tonnage": 10083,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Research Bio"
+        }
+      ],
+      "aliases": [
+        "Research Station / Astraeus"
+      ]
+    },
+    {
+      "id": "installation_research_station_coeus",
+      "name": "Coeus",
+      "facility_type": "Installation",
+      "category": "Research Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Research Station",
+      "market_economy": "High Tech",
+      "construction_tonnage": 10083,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Research Bio"
+        }
+      ],
+      "aliases": [
+        "Research Station / Coeus"
+      ]
+    },
+    {
+      "id": "installation_research_station_dodona",
+      "name": "Dodona",
+      "facility_type": "Installation",
+      "category": "Research Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Research Station",
+      "market_economy": "High Tech",
+      "construction_tonnage": 10083,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Research Bio"
+        }
+      ],
+      "aliases": [
+        "Research Station / Dodona"
+      ]
+    },
+    {
+      "id": "installation_research_station_dione",
+      "name": "Dione",
+      "facility_type": "Installation",
+      "category": "Research Station",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Research Station",
+      "market_economy": "High Tech",
+      "construction_tonnage": 10083,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Research Bio"
+        }
+      ],
+      "aliases": [
+        "Research Station / Dione"
+      ]
+    },
+    {
+      "id": "installation_tourist_hedone",
+      "name": "Hedone",
+      "facility_type": "Installation",
+      "category": "Tourist",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Tourist",
+      "market_economy": "Tourism",
+      "construction_tonnage": 10087,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Tourism"
+        }
+      ],
+      "aliases": [
+        "Tourist / Hedone"
+      ]
+    },
+    {
+      "id": "installation_tourist_opora",
+      "name": "Opora",
+      "facility_type": "Installation",
+      "category": "Tourist",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Tourist",
+      "market_economy": "Tourism",
+      "construction_tonnage": 10087,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Tourism"
+        }
+      ],
+      "aliases": [
+        "Tourist / Opora"
+      ]
+    },
+    {
+      "id": "installation_tourist_pasithea",
+      "name": "Pasithea",
+      "facility_type": "Installation",
+      "category": "Tourist",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "Tourist",
+      "market_economy": "Tourism",
+      "construction_tonnage": 10087,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "prerequisites": [
+        {
+          "facility_type": "Settlement",
+          "economy": "Tourism"
+        }
+      ],
+      "aliases": [
+        "Tourist / Pasithea"
+      ]
+    },
+    {
+      "id": "installation_space_bar_dionysus",
+      "name": "Dionysus",
+      "facility_type": "Installation",
+      "category": "Space Bar",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10076,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Space Bar / Dionysus"
+      ]
+    },
+    {
+      "id": "installation_space_bar_bacchus",
+      "name": "Bacchus",
+      "facility_type": "Installation",
+      "category": "Space Bar",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 10076,
+      "point_cost_mode": "fixed",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 1,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Space Bar / Bacchus"
+      ]
+    },
+    {
+      "id": "starport_coriolis_no_truss",
+      "name": "No Truss",
+      "facility_type": "Starport",
+      "category": "Coriolis",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Coriolis No Truss",
+        "Coriolis / No Truss"
+      ]
+    },
+    {
+      "id": "starport_coriolis_dual_truss",
+      "name": "Dual Truss",
+      "facility_type": "Starport",
+      "category": "Coriolis",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Coriolis Dual Truss",
+        "Coriolis / Dual Truss"
+      ]
+    },
+    {
+      "id": "starport_coriolis_quad_truss",
+      "name": "Quad Truss",
+      "facility_type": "Starport",
+      "category": "Coriolis",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Coriolis Quad Truss",
+        "Coriolis / Quad Truss"
+      ]
+    },
+    {
+      "id": "starport_asteroid_base_ice",
+      "name": "Ice",
+      "facility_type": "Starport",
+      "category": "Asteroid Base",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Asteroid Base Ice",
+        "Asteroid Base / Ice"
+      ]
+    },
+    {
+      "id": "starport_asteroid_base_metal",
+      "name": "Metal",
+      "facility_type": "Starport",
+      "category": "Asteroid Base",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Asteroid Base Metal",
+        "Asteroid Base / Metal"
+      ]
+    },
+    {
+      "id": "starport_asteroid_base_rock",
+      "name": "Rock",
+      "facility_type": "Starport",
+      "category": "Asteroid Base",
+      "tier": 2,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 53723,
+      "point_cost_mode": "t2_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 1
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Asteroid Base Rock",
+        "Asteroid Base / Rock"
+      ]
+    },
+    {
+      "id": "starport_ocellus_ocellus",
+      "name": "Ocellus",
+      "facility_type": "Starport",
+      "category": "Ocellus",
       "tier": 3,
-      "site_type": "surface",
-      "economy": "Unknown",
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 209122,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
-          "tier_3": 6
+          "tier_3": 0
         },
         "provides": {
           "tier_2": 0,
@@ -355,23 +3775,32 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Player observed Zeus appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+      "notes": "",
+      "aliases": [
+        "Ocellus Ocellus",
+        "Ocellus / Ocellus"
+      ]
     },
     {
-      "id": "tier3_port_hera",
-      "name": "Hera",
-      "facility_type": "Planetary Port",
-      "category": "Planetary Port",
+      "id": "starport_orbis_apollo",
+      "name": "Apollo",
+      "facility_type": "Starport",
+      "category": "Orbis",
       "tier": 3,
-      "site_type": "surface",
-      "economy": "Unknown",
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 209122,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
-          "tier_3": 6
+          "tier_3": 0
         },
         "provides": {
           "tier_2": 0,
@@ -379,263 +3808,32 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Player observed Hera appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+      "notes": "",
+      "aliases": [
+        "Orbis Apollo",
+        "Orbis / Apollo"
+      ]
     },
     {
-      "id": "planetary_outpost_decima",
-      "name": "Decima",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
-    },
-    {
-      "id": "planetary_outpost_atropos",
-      "name": "Atropos",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
-    },
-    {
-      "id": "planetary_outpost_nona",
-      "name": "Nona",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
-    },
-    {
-      "id": "planetary_outpost_lachesis",
-      "name": "Lachesis",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
-    },
-    {
-      "id": "planetary_outpost_clotho",
-      "name": "Clotho",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Civilian",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Civilian Tier 1 outpost; player observed +1 Tier 2 point."
-    },
-    {
-      "id": "planetary_outpost_ananke",
-      "name": "Ananke",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Scientific",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
-    },
-    {
-      "id": "planetary_outpost_fauna",
-      "name": "Fauna",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Scientific",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
-    },
-    {
-      "id": "planetary_outpost_providentia",
-      "name": "Providentia",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Scientific",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
-    },
-    {
-      "id": "planetary_outpost_antevorta",
-      "name": "Antevorta",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Scientific",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
-    },
-    {
-      "id": "planetary_outpost_porrima",
-      "name": "Porrima",
-      "facility_type": "Planetary Port",
-      "category": "Outpost",
-      "tier": 1,
-      "site_type": "surface",
-      "economy": "Scientific",
-      "construction_points": {
-        "requires": {
-          "tier_2": 0,
-          "tier_3": 0
-        },
-        "provides": {
-          "tier_2": 1,
-          "tier_3": 0
-        }
-      },
-      "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
-      },
-      "notes": "Scientific Tier 1 outpost; player observed +1 Tier 2 point and market linking to Genesis High Tech."
-    },
-    {
-      "id": "tier3_port_poseidon",
-      "name": "Poseidon",
-      "facility_type": "Planetary Port",
-      "category": "Planetary Port",
+      "id": "starport_orbis_artemis",
+      "name": "Artemis",
+      "facility_type": "Starport",
+      "category": "Orbis",
       "tier": 3,
-      "site_type": "surface",
-      "economy": "Unknown",
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 209122,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
-          "tier_3": 6
+          "tier_3": 0
         },
         "provides": {
           "tier_2": 0,
@@ -643,23 +3841,32 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Player observed Poseidon appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+      "notes": "",
+      "aliases": [
+        "Orbis Artemis",
+        "Orbis / Artemis"
+      ]
     },
     {
-      "id": "tier3_port_aphrodite",
-      "name": "Aphrodite",
-      "facility_type": "Planetary Port",
-      "category": "Planetary Port",
+      "id": "starport_dodecahedron_no_truss",
+      "name": "No Truss",
+      "facility_type": "Starport",
+      "category": "Dodecahedron",
       "tier": 3,
-      "site_type": "surface",
-      "economy": "Unknown",
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 236304,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
       "construction_points": {
         "requires": {
           "tier_2": 0,
-          "tier_3": 6
+          "tier_3": 0
         },
         "provides": {
           "tier_2": 0,
@@ -667,177 +3874,639 @@
         }
       },
       "verification": {
-        "status": "player_note",
-        "game_version": "4.4.0.3"
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
       },
-      "notes": "Player observed Aphrodite appears to require 6 Tier 3 points. Exact increases/effects still need entry."
+      "notes": "",
+      "aliases": [
+        "Dodecahedron No Truss",
+        "Dodecahedron / No Truss"
+      ]
+    },
+    {
+      "id": "starport_dodecahedron_quint_truss",
+      "name": "Quint Truss",
+      "facility_type": "Starport",
+      "category": "Dodecahedron",
+      "tier": 3,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 236304,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Dodecahedron Quint Truss",
+        "Dodecahedron / Quint Truss"
+      ]
+    },
+    {
+      "id": "starport_dodecahedron_dec_truss",
+      "name": "Dec Truss",
+      "facility_type": "Starport",
+      "category": "Dodecahedron",
+      "tier": 3,
+      "site_type": "orbital",
+      "economy": "",
+      "market_economy": "",
+      "construction_tonnage": 236304,
+      "point_cost_mode": "t3_port",
+      "preferred_rank": 0,
+      "construction_points": {
+        "requires": {
+          "tier_2": 0,
+          "tier_3": 0
+        },
+        "provides": {
+          "tier_2": 0,
+          "tier_3": 0
+        }
+      },
+      "verification": {
+        "status": "community_verified_v3_4_1",
+        "source": "DaftMav Colonization Construction v3.4.1 via EDCPS buildings.ts; player screenshots where noted",
+        "checked": "2026-08-30"
+      },
+      "notes": "",
+      "aliases": [
+        "Dodecahedron Dec Truss",
+        "Dodecahedron / Dec Truss"
+      ]
     }
   ],
   "goals": {
     "Expansion Materials Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation. Existing claim station should already be complete."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial Tier 1 planetary outpost; adds +1 Tier 2 point and supports construction-material production."
+        "reason": "Industrial port support for construction-material trading; +1 T2."
       },
       {
         "facility_id": "extraction_hub_tartarus",
-        "reason": "Extraction hub path toward Tier 3 points for larger ports and deeper build-out."
+        "reason": "Extraction support for raw-material economy; planner must satisfy its Extraction Settlement prerequisite first."
       },
       {
         "facility_id": "planetary_outpost_opis",
-        "reason": "Second Industrial Tier 1 outpost to grow industrial capacity and market linking."
+        "reason": "Additional Industrial Tier-1 port; +1 T2 and Industrial market support."
       },
       {
         "facility_id": "tier3_port_zeus",
-        "reason": "Tier 3 planetary port candidate once enough Tier 3 points exist."
+        "reason": "Tier-3 planetary port target once the system has enough T3 points."
       }
     ],
     "Industrial Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial Tier 1 planetary outpost; adds +1 Tier 2 point."
+        "reason": "Industrial Tier-1 port and +1 T2."
       },
       {
         "facility_id": "planetary_outpost_opis",
-        "reason": "Additional Industrial capacity and market linking."
+        "reason": "Additional Industrial Tier-1 port and +1 T2."
       },
       {
-        "facility_id": "planetary_outpost_ponos",
-        "reason": "Additional Industrial capacity and market linking."
-      },
-      {
-        "facility_id": "extraction_hub_tartarus",
-        "reason": "Adds Extraction support and begins Tier 3 point progression."
+        "facility_id": "hub_industrial_molae",
+        "reason": "Industrial Hub target; Mining Outpost prerequisite is inserted automatically."
       }
     ],
     "Mining and Refinery Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "extraction_hub_tartarus",
-        "reason": "Extraction hub candidate; player noted it provides Tier 3 construction points."
+        "reason": "Extraction Hub target; Extraction Settlement prerequisite is inserted automatically."
+      },
+      {
+        "facility_id": "hub_refinery_silenus",
+        "reason": "Refinery economy support."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial outpost to support refining and construction supply chains."
+        "reason": "Industrial port support."
       }
     ],
     "Research and Technology Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "planetary_outpost_necessitas",
-        "reason": "Scientific Tier 1 planetary outpost; adds +1 Tier 2 point and links to Genesis High Tech."
+        "reason": "Scientific planetary outpost; +1 T2 and High Tech market support."
       },
       {
-        "facility_id": "extraction_hub_tartarus",
-        "reason": "Builds toward Tier 3 points required by larger facilities."
+        "facility_id": "hub_scientific_athena",
+        "reason": "Scientific Hub for technology growth."
       }
     ],
     "Balanced Colony": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "planetary_outpost_hestia",
-        "reason": "Civilian Tier 1 outpost; adds +1 Tier 2 point."
+        "reason": "Civilian Tier-1 port; +1 T2."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial Tier 1 outpost; adds +1 Tier 2 point."
+        "reason": "Industrial Tier-1 port; +1 T2."
       },
       {
         "facility_id": "planetary_outpost_necessitas",
-        "reason": "Scientific Tier 1 outpost; adds +1 Tier 2 point."
+        "reason": "Scientific Tier-1 port; +1 T2."
       },
       {
         "facility_id": "extraction_hub_tartarus",
-        "reason": "Adds Extraction support and Tier 3 point progression."
+        "reason": "Extraction support; prerequisite inserted automatically."
       }
     ],
     "Tritium Production Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "extraction_hub_tartarus",
-        "reason": "Extraction hub candidate for a resource-focused system and Tier 3 point progression."
+        "reason": "Extraction economy; prerequisite inserted automatically."
+      },
+      {
+        "facility_id": "hub_refinery_silenus",
+        "reason": "Refinery support for mining/fuel supply."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial support for resource movement and construction supplies."
+        "reason": "Industrial port support."
       }
     ],
     "Carrier Support Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial support for carrier supply and repair/refit economy goals."
+        "reason": "Industrial support and +1 T2."
       },
       {
-        "facility_id": "extraction_hub_tartarus",
-        "reason": "Resource support and Tier 3 point progression."
+        "facility_id": "hub_high_tech_janus",
+        "reason": "High Tech support."
+      },
+      {
+        "facility_id": "hub_refinery_silenus",
+        "reason": "Refinery support."
       }
     ],
     "Agricultural Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
-        "facility_id": "planetary_outpost_hestia",
-        "reason": "Civilian Tier 1 outpost seed until agriculture-specific layouts are added."
+        "facility_id": "settlement_small_agricultural_settlement_consus",
+        "reason": "Low-cost Agricultural Settlement; +1 T2."
       },
       {
-        "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial support for colony supply movement."
+        "facility_id": "hub_civilian_aegle",
+        "reason": "Civilian Hub; Agricultural Settlement prerequisite is satisfied by the prior step."
       }
     ],
     "Tourism Hub": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
-        "facility_id": "planetary_outpost_hestia",
-        "reason": "Civilian Tier 1 outpost seed until tourism-specific layouts are added."
+        "facility_id": "installation_satellite_hermes",
+        "reason": "Satellite prerequisite for Tourism Settlements; +1 T2."
       },
       {
-        "facility_id": "planetary_outpost_necessitas",
-        "reason": "Scientific support and construction-point growth."
+        "facility_id": "settlement_small_tourism_settlement_aergia",
+        "reason": "Tourism Settlement; costs 1 T2 and gives +1 T3."
+      },
+      {
+        "facility_id": "installation_tourist_hedone",
+        "reason": "Tourist Installation; requires a Tourism Settlement."
       }
     ],
     "Population Center": [
       {
         "facility_id": "primary_port",
-        "reason": "Colony foundation. Skip this step when the existing primary port is marked complete."
+        "reason": "Colony foundation."
       },
       {
         "facility_id": "planetary_outpost_hestia",
-        "reason": "Civilian Tier 1 outpost; adds +1 Tier 2 point."
+        "reason": "Civilian Tier-1 port; +1 T2."
       },
       {
-        "facility_id": "planetary_outpost_hephaestus",
-        "reason": "Industrial support for workforce supply chain."
+        "facility_id": "settlement_small_agricultural_settlement_consus",
+        "reason": "Agricultural settlement support; +1 T2."
       }
     ],
-    "Custom Plan": []
-  }
+    "Custom Plan": [],
+    "Colonisation Supply Network": [
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial market support for manufactured construction goods and Food Cartridges."
+      },
+      {
+        "facility_id": "settlement_small_mining_ourea",
+        "reason": "Extraction support for raw construction materials; +1 T2."
+      },
+      {
+        "facility_id": "hub_refinery_silenus",
+        "reason": "Refinery support for processed metals and mining supply."
+      },
+      {
+        "facility_id": "settlement_small_agricultural_settlement_consus",
+        "reason": "Agriculture support for local food supply; +1 T2."
+      },
+      {
+        "facility_id": "planetary_outpost_necessitas",
+        "reason": "High Tech market support for technology goods such as H.E. Suits; +1 T2."
+      }
+    ]
+  },
+  "secondary_goal_map": {
+    "Expansion Support": "Expansion Materials Hub",
+    "Carrier Support": "Carrier Support Hub",
+    "Tritium Availability": "Tritium Production Hub",
+    "Population Growth": "Population Center",
+    "Commodity Profit": "Industrial Hub",
+    "Research Capability": "Research and Technology Hub",
+    "Tourism": "Tourism Hub",
+    "Mining and Refining": "Mining and Refinery Hub",
+    "Balanced Services": "Balanced Colony",
+    "Local Construction Supplies": "Colonisation Supply Network"
+  },
+  "goal_profiles": {
+    "Expansion Materials Hub": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 5,
+        "Refinery": 3,
+        "High Tech": 2
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Tritium Production Hub": {
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 3
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Carrier Support Hub": {
+      "economies": {
+        "Industrial": 4,
+        "High Tech": 4,
+        "Refinery": 4,
+        "Extraction": 2
+      },
+      "orbital_support": [
+        "installation_communication_station_pistis",
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Industrial Hub": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 3,
+        "Refinery": 2
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Mining and Refinery Hub": {
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 3
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia"
+      ]
+    },
+    "Agricultural Hub": {
+      "economies": {
+        "Agriculture": 5,
+        "Civilian": 3
+      },
+      "orbital_support": [
+        "installation_space_farm_demeter"
+      ]
+    },
+    "Research and Technology Hub": {
+      "economies": {
+        "High Tech": 5,
+        "Research Bio": 5,
+        "Scientific": 4
+      },
+      "orbital_support": [
+        "installation_communication_station_pistis"
+      ]
+    },
+    "Tourism Hub": {
+      "economies": {
+        "Tourism": 5,
+        "Civilian": 3,
+        "Agriculture": 1
+      },
+      "orbital_support": [
+        "installation_satellite_hermes"
+      ]
+    },
+    "Population Center": {
+      "economies": {
+        "Civilian": 5,
+        "Agriculture": 4,
+        "Tourism": 1
+      },
+      "orbital_support": [
+        "installation_space_farm_demeter"
+      ]
+    },
+    "Balanced Colony": {
+      "economies": {
+        "Industrial": 3,
+        "Extraction": 3,
+        "Agriculture": 3,
+        "High Tech": 3,
+        "Tourism": 2,
+        "Refinery": 2
+      },
+      "orbital_support": [
+        "installation_relay_station_enodia"
+      ]
+    },
+    "Custom Plan": {
+      "economies": {},
+      "orbital_support": []
+    },
+    "Colonisation Supply Network": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 4,
+        "Refinery": 4,
+        "Agriculture": 5,
+        "High Tech": 5
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia",
+        "installation_space_farm_demeter"
+      ]
+    }
+  },
+  "buildout_stages": [
+    {
+      "name": "Industrial & Commodity Network",
+      "description": "Broaden industrial production, commodity trade, and mining support after the selected goals are secured.",
+      "priority": 80,
+      "economies": {
+        "Industrial": 5,
+        "Commercial": 4,
+        "Extraction": 2,
+        "Refinery": 2
+      },
+      "facility_ids": [
+        "settlement_small_industrial_settlement_fontus",
+        "settlement_large_industrial_settlement_gaea",
+        "installation_mining_outpost_euthenia",
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "hub_industrial_molae"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_industrial_settlement_fontus",
+        "installation_mining_outpost_euthenia",
+        "outpost_commercial_outpost_plutus",
+        "hub_industrial_molae"
+      ]
+    },
+    {
+      "name": "Mining & Refining Network",
+      "description": "Strengthen extraction, refining, and orbital mining support across the system.",
+      "priority": 78,
+      "economies": {
+        "Extraction": 5,
+        "Refinery": 5,
+        "Industrial": 2
+      },
+      "facility_ids": [
+        "settlement_small_mining_ourea",
+        "settlement_large_mining_aerecura",
+        "installation_mining_outpost_euthenia",
+        "extraction_hub_tartarus",
+        "hub_refinery_silenus",
+        "starport_asteroid_base_ice"
+      ],
+      "target_count": 5,
+      "target_facility_ids": [
+        "settlement_small_mining_ourea",
+        "settlement_large_mining_aerecura",
+        "installation_mining_outpost_euthenia",
+        "extraction_hub_tartarus",
+        "hub_refinery_silenus"
+      ]
+    },
+    {
+      "name": "Science & Research Network",
+      "description": "Add scientific ports, research settlements, communications, and orbital research capability.",
+      "priority": 66,
+      "economies": {
+        "Scientific": 5,
+        "Research Bio": 5,
+        "High Tech": 4,
+        "Communication Station": 2
+      },
+      "facility_ids": [
+        "planetary_outpost_necessitas",
+        "settlement_small_scientific_settlement_pheobe",
+        "settlement_large_scientific_settlement_chronos",
+        "installation_communication_station_pistis",
+        "installation_research_station_astraeus",
+        "outpost_scientific_outpost_prometheus",
+        "hub_scientific_athena"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "planetary_outpost_necessitas",
+        "installation_communication_station_pistis",
+        "installation_research_station_astraeus",
+        "hub_scientific_athena"
+      ]
+    },
+    {
+      "name": "Agriculture & Population Network",
+      "description": "Develop food, civilian, medical, and government support for a mature colony.",
+      "priority": 62,
+      "economies": {
+        "Agriculture": 5,
+        "Civilian": 5,
+        "Tourism": 1
+      },
+      "facility_ids": [
+        "planetary_outpost_hestia",
+        "settlement_small_agricultural_settlement_consus",
+        "settlement_large_agricultural_settlement_ceres",
+        "installation_space_farm_demeter",
+        "outpost_civilian_outpost_vesta",
+        "installation_medical_asclepius",
+        "installation_government_harmonia",
+        "hub_civilian_aegle"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_agricultural_settlement_consus",
+        "installation_space_farm_demeter",
+        "outpost_civilian_outpost_vesta",
+        "hub_civilian_aegle"
+      ]
+    },
+    {
+      "name": "Tourism & Services Network",
+      "description": "Add tourism, hospitality, and visitor-support infrastructure once core industry is established.",
+      "priority": 52,
+      "economies": {
+        "Tourism": 5,
+        "Civilian": 3,
+        "Agriculture": 1
+      },
+      "facility_ids": [
+        "installation_satellite_hermes",
+        "settlement_small_tourism_settlement_aergia",
+        "settlement_large_tourism_settlement_fufluns",
+        "installation_tourist_hedone",
+        "installation_space_bar_dionysus",
+        "hub_outpost_io"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "installation_satellite_hermes",
+        "settlement_small_tourism_settlement_aergia",
+        "installation_tourist_hedone",
+        "hub_outpost_io"
+      ]
+    },
+    {
+      "name": "Security & Military Network",
+      "description": "Build a layered military and security chain for a fully developed system.",
+      "priority": 48,
+      "economies": {
+        "Military": 5,
+        "Relay Station": 2
+      },
+      "facility_ids": [
+        "settlement_small_military_settlement_ioke",
+        "settlement_large_military_settlement_minerva",
+        "installation_relay_station_enodia",
+        "installation_security_station_dicaeosyne",
+        "installation_military_vacuna",
+        "outpost_military_outpost_nemesis",
+        "hub_military_alala"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_military_settlement_ioke",
+        "installation_relay_station_enodia",
+        "installation_security_station_dicaeosyne",
+        "installation_military_vacuna"
+      ]
+    },
+    {
+      "name": "Exploration & Communications Network",
+      "description": "Improve system communications, exploration support, and distributed orbital coverage.",
+      "priority": 45,
+      "economies": {
+        "Exploration": 5,
+        "Communication Station": 5,
+        "Scientific": 2,
+        "Satellite": 2
+      },
+      "facility_ids": [
+        "installation_communication_station_pistis",
+        "installation_satellite_hermes",
+        "installation_relay_station_enodia",
+        "outpost_scientific_outpost_prometheus",
+        "hub_exploration_tellus"
+      ],
+      "target_count": 3,
+      "target_facility_ids": [
+        "installation_communication_station_pistis",
+        "installation_satellite_hermes",
+        "hub_exploration_tellus"
+      ]
+    },
+    {
+      "name": "Orbital Trade & Port Network",
+      "description": "Add useful orbital ports after supporting economies exist; expensive major ports remain late-stage choices.",
+      "priority": 38,
+      "economies": {
+        "Commercial": 5,
+        "Industrial": 3,
+        "Civilian": 2,
+        "Scientific": 2
+      },
+      "facility_ids": [
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "outpost_civilian_outpost_vesta",
+        "outpost_scientific_outpost_prometheus",
+        "starport_coriolis_no_truss"
+      ],
+      "target_count": 3,
+      "target_facility_ids": [
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "outpost_civilian_outpost_vesta"
+      ]
+    },
+    {
+      "name": "Independent Operations",
+      "description": "Optional late-stage independent/criminal infrastructure for commanders who want broad category coverage.",
+      "priority": 10,
+      "economies": {
+        "Criminal": 2
+      },
+      "facility_ids": [
+        "outpost_criminal_outpost_dysnomia",
+        "installation_pirate_base_apate"
+      ],
+      "target_count": 0,
+      "targeted": false,
+      "target_facility_ids": []
+    }
+  ]
 }

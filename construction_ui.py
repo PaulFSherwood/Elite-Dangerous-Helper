@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+from datetime import datetime, timedelta, timezone
 
-from PyQt6.QtCore import Qt, QSettings, pyqtSignal
-from PyQt6.QtGui import QAction, QColor
+from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QPen
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -16,12 +17,15 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QMenu,
     QPushButton,
     QProgressBar,
     QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -29,7 +33,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from construction_rules import ColonisationCatalog, FacilityRef, MaterialRequirement
+from construction_rules import (
+    ColonisationCatalog,
+    FacilityDescriptor,
+    FacilityPrerequisite,
+    FacilityRef,
+    MaterialRequirement,
+)
 from state import commodity_key
 
 
@@ -58,7 +68,44 @@ SECONDARY_GOALS = [
     "Tourism",
     "Mining and Refining",
     "Balanced Services",
+    "Local Construction Supplies",
 ]
+
+PLAN_SCOPES = [
+    "Primary Goal Only",
+    "Primary + Secondary Goals",
+    "Goal-Directed Expansion",
+    "Full System Build-Out",
+]
+
+LOCAL_MARKET_SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 37
+
+
+class LocalMaterialRowDelegate(QStyledItemDelegate):
+    """Outline only actionable local-source rows.
+
+    Local-source knowledge is retained after a material is stocked or delivered,
+    but the strong purple cue is reserved for commodities the player still needs
+    to acquire.  This keeps completed rows visually quiet.
+    """
+
+    def paint(self, painter, option, index) -> None:  # type: ignore[override]
+        super().paint(painter, option, index)
+        if not bool(index.data(LOCAL_MARKET_SOURCE_ROLE)):
+            return
+
+        painter.save()
+        painter.setPen(QPen(QColor("#A855F7"), 2))
+        rect = option.rect.adjusted(1, 1, -1, -1)
+        painter.drawLine(rect.topLeft(), rect.topRight())
+        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        if index.column() == 0:
+            painter.drawLine(rect.topLeft(), rect.bottomLeft())
+        model = index.model()
+        if model is not None and index.column() == model.columnCount() - 1:
+            painter.drawLine(rect.topRight(), rect.bottomRight())
+        painter.restore()
+
 
 # Facility choices and goal recipes now live in data/colonisation_facilities.json.
 # This default catalog is still usable if the JSON is incomplete, and the data
@@ -113,6 +160,8 @@ class SiteData:
     radius_km: Optional[float] = None
     atmosphere: str = ""
     volcanism: str = ""
+    parent_body: str = ""
+    distance_ls: Optional[float] = None
 
 
 @dataclass
@@ -125,17 +174,27 @@ class MaterialData:
     source: str = ""
 
     @property
+    def delivery_remaining(self) -> int:
+        """Tonnage Elite still requires at the construction depot."""
+        return max(0, int(self.required) - int(self.delivered))
+
+    @property
     def still_needed(self) -> int:
-        # "Still needed" means material that still has to be acquired. Cargo
-        # already on the ship or carrier is owned even though it is not yet
-        # counted as Delivered by the construction depot.
-        return max(
-            0,
-            int(self.required)
-            - int(self.delivered)
-            - int(self.ship)
-            - int(self.carrier),
-        )
+        # The Materials table uses "Still needed" to mean *still to deliver*,
+        # not still to buy. Ship/carrier stock is informational and must never
+        # make an unfinished depot row look complete.
+        return self.delivery_remaining
+
+    @property
+    def on_hand_for_build(self) -> int:
+        """Owned cargo relevant to this build, capped at the depot shortfall."""
+        owned = max(0, int(self.ship)) + max(0, int(self.carrier))
+        return min(self.delivery_remaining, owned)
+
+    @property
+    def acquisition_needed(self) -> int:
+        """Tonnage still to acquire after using current ship/carrier stock."""
+        return max(0, self.delivery_remaining - self.on_hand_for_build)
 
 @dataclass
 class FacilityData:
@@ -146,13 +205,22 @@ class FacilityData:
     status: str = "Queued"
     facility_id: str = ""
     facility_type: str = ""
+    category: str = ""
     tier: int = 0
     economy: str = ""
+    market_economy: str = ""
+    construction_tonnage: int = 0
+    point_cost_mode: str = "fixed"
     requires_tier_2: int = 0
     requires_tier_3: int = 0
     provides_tier_2: int = 0
     provides_tier_3: int = 0
     confidence: str = "unverified"
+    construction_started: bool = False
+    planned_location: str = ""
+    location_confirmed: bool = False
+    location_locked: bool = False
+    deviation_note: str = ""
 
     @classmethod
     def from_reference(cls, facility: FacilityRef, reason: str) -> "FacilityData":
@@ -162,8 +230,12 @@ class FacilityData:
             preferred_site=facility.site_type,
             facility_id=facility.id,
             facility_type=facility.facility_type,
+            category=facility.category,
             tier=facility.tier,
             economy=facility.economy,
+            market_economy=facility.market_economy,
+            construction_tonnage=facility.construction_tonnage,
+            point_cost_mode=facility.point_cost_mode,
             requires_tier_2=facility.requires_tier_2,
             requires_tier_3=facility.requires_tier_3,
             provides_tier_2=facility.provides_tier_2,
@@ -173,6 +245,11 @@ class FacilityData:
 
     @property
     def point_summary(self) -> str:
+        if self.point_cost_mode == "t2_port":
+            prefix = "requires escalating T2 port cost (3, 5, 7, …)"
+            return f"{prefix}, provides +{self.provides_tier_3} T3" if self.provides_tier_3 else prefix
+        if self.point_cost_mode == "t3_port":
+            return "requires escalating T3 port cost (6, 12, 18, …)"
         parts: list[str] = []
         if self.requires_tier_2:
             parts.append(f"requires {self.requires_tier_2} T2")
@@ -189,6 +266,7 @@ class FacilityData:
 class PlanData:
     primary_goal: str = "Balanced Colony"
     secondary_goal: str = "None"
+    plan_scope: str = "Goal-Directed Expansion"
     phase: str = "Unknown"
     primary_port_complete: bool = False
     primary_port_name: str = "Primary Port"
@@ -202,6 +280,11 @@ class PlanData:
     facilities: list[FacilityData] = field(default_factory=list)
     materials_by_build: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     ship_capacity_tons: int = 1168
+    point_balance_calibrated: bool = False
+    point_adjust_tier_2: int = 0
+    point_adjust_tier_3: int = 0
+    point_calibration_tier_2: int = 0
+    point_calibration_tier_3: int = 0
 
 
 class ConstructionPanel(QWidget):
@@ -210,6 +293,7 @@ class ConstructionPanel(QWidget):
     current_build_changed = pyqtSignal(str, str)
     system_lock_changed = pyqtSignal(str, bool)
     carrier_empty_baseline_requested = pyqtSignal(object)
+    activity_changed = pyqtSignal(bool)
 
     def __init__(self, settings: QSettings, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -228,11 +312,42 @@ class ConstructionPanel(QWidget):
         self.carrier_inventory_known = False
         self.carrier_known_commodities: set[str] = set()
         self.market_sources: dict[str, str] = {}
+        self.market_sources_by_system: dict[str, dict[str, str]] = {}
         self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
+
+        # Construction mode receives several filesystem/journal notifications for
+        # a single in-game action.  Keep the live planner in memory and coalesce
+        # persistence instead of forcing synchronous settings I/O on every event.
+        self._settings_sync_timer = QTimer(self)
+        self._settings_sync_timer.setSingleShot(True)
+        self._settings_sync_timer.setInterval(250)
+        self._settings_sync_timer.timeout.connect(self.settings.sync)
+        self._system_replan_timer = QTimer(self)
+        self._system_replan_timer.setSingleShot(True)
+        self._system_replan_timer.setInterval(90)
+        self._system_replan_timer.timeout.connect(self._apply_system_data_replan)
+        self._last_saved_plan_key = ""
+        self._last_saved_plan_payload = ""
+        self._last_system_data_signature: tuple[Any, ...] | None = None
+
         self._load_plan()
         self._build_ui()
         self._apply_plan()
+
+    def _run_user_action(self, action: Callable[[], None]) -> None:
+        """Run a player command with immediate visible activity feedback.
+
+        Planner actions can synchronously regenerate several tables. Paint the
+        warm/red busy background before that work starts so a long operation
+        never looks like a dead click.
+        """
+        self.activity_changed.emit(True)
+        QApplication.processEvents()
+        try:
+            action()
+        finally:
+            self.activity_changed.emit(False)
 
     def _key(self) -> str:
         safe = self.system_name.lower().replace("/", "_")
@@ -242,7 +357,11 @@ class ConstructionPanel(QWidget):
         raw = self.settings.value(self._key(), "")
         if not raw:
             self.plan = PlanData()
+            self._last_saved_plan_key = self._key()
+            self._last_saved_plan_payload = ""
             return
+        self._last_saved_plan_key = self._key()
+        self._last_saved_plan_payload = str(raw)
         try:
             data = json.loads(str(raw))
             sites = [SiteData(**row) for row in data.pop("sites", [])]
@@ -251,12 +370,38 @@ class ConstructionPanel(QWidget):
             self.plan = PlanData(**allowed)
             self.plan.sites = sites
             self.plan.facilities = facilities
+            changed = False
+            # v3.1.2 changes the broad default from "fill every useful category"
+            # to goal-directed expansion. Existing plans migrate to the safer
+            # targeted behavior; Full System Build-Out remains opt-in.
+            if self.plan.plan_scope == "Continue System Build-Out":
+                self.plan.plan_scope = "Goal-Directed Expansion"
+                changed = True
+            elif self.plan.plan_scope not in PLAN_SCOPES:
+                self.plan.plan_scope = "Goal-Directed Expansion"
+                changed = True
+            changed = self._clean_saved_site_facilities() or changed
+            changed = self._refresh_plan_facility_metadata() or changed
+            if changed:
+                self._save_plan()
         except (ValueError, TypeError):
             self.plan = PlanData()
 
+    def _schedule_settings_sync(self) -> None:
+        # QSettings.setValue updates the in-process value immediately.  The
+        # expensive disk flush is delayed briefly so a burst of journal events
+        # results in one sync instead of dozens on the GUI thread.
+        self._settings_sync_timer.start()
+
     def _save_plan(self) -> None:
-        self.settings.setValue(self._key(), json.dumps(asdict(self.plan), sort_keys=True))
-        self.settings.sync()
+        key = self._key()
+        payload = json.dumps(asdict(self.plan), sort_keys=True)
+        if key == self._last_saved_plan_key and payload == self._last_saved_plan_payload:
+            return
+        self.settings.setValue(key, payload)
+        self._last_saved_plan_key = key
+        self._last_saved_plan_payload = payload
+        self._schedule_settings_sync()
 
     def _load_active_focus(self) -> dict[str, Any]:
         raw = self.settings.value("construction/active_focus", "")
@@ -280,18 +425,30 @@ class ConstructionPanel(QWidget):
             "location": facility.location,
             "facility_id": facility.facility_id,
             "facility_type": facility.facility_type,
+            "category": facility.category,
             "tier": facility.tier,
             "economy": facility.economy,
+            "market_economy": facility.market_economy,
+            "construction_tonnage": facility.construction_tonnage,
+            "point_cost_mode": facility.point_cost_mode,
             "preferred_site": facility.preferred_site,
+            "construction_started": bool(facility.construction_started),
+            "planned_location": facility.planned_location,
+            "location_confirmed": bool(facility.location_confirmed),
+            "deviation_note": facility.deviation_note,
+            "tracked_at_utc": str(self.active_focus.get("tracked_at_utc", "") or "")
+            or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "reason": facility.reason,
             "confidence": facility.confidence,
             "material_key": self._material_key_for(facility),
             "ship_capacity_tons": int(self.plan.ship_capacity_tons or 1),
             "materials": [self._material_dict(row) for row in materials],
         }
+        if record == self.active_focus:
+            return
         self.active_focus = record
         self.settings.setValue("construction/active_focus", json.dumps(record, sort_keys=True))
-        self.settings.sync()
+        self._schedule_settings_sync()
 
     def _active_focus_facility(self) -> Optional[FacilityData]:
         if not self.active_focus:
@@ -307,8 +464,16 @@ class ConstructionPanel(QWidget):
             status="Building now",
             facility_id=str(self.active_focus.get("facility_id", "")),
             facility_type=str(self.active_focus.get("facility_type", "")),
+            category=str(self.active_focus.get("category", "")),
             tier=self._int_cell(self.active_focus.get("tier", 0)),
             economy=str(self.active_focus.get("economy", "")),
+            market_economy=str(self.active_focus.get("market_economy", "")),
+            construction_tonnage=self._int_cell(self.active_focus.get("construction_tonnage", 0)),
+            point_cost_mode=str(self.active_focus.get("point_cost_mode", "fixed") or "fixed"),
+            construction_started=bool(self.active_focus.get("construction_started", False)),
+            planned_location=str(self.active_focus.get("planned_location", "")),
+            location_confirmed=bool(self.active_focus.get("location_confirmed", False)),
+            deviation_note=str(self.active_focus.get("deviation_note", "")),
             confidence=str(self.active_focus.get("confidence", "active_focus")),
         )
 
@@ -335,7 +500,7 @@ class ConstructionPanel(QWidget):
     def _save_system_lock(self) -> None:
         self.settings.setValue("construction/system_locked", bool(self.system_locked))
         self.settings.setValue("construction/locked_system_name", self.locked_system_name)
-        self.settings.sync()
+        self._schedule_settings_sync()
 
     def _emit_system_lock_changed(self) -> None:
         self.system_lock_changed.emit(self.display_system_name(), bool(self.system_locked))
@@ -370,6 +535,7 @@ class ConstructionPanel(QWidget):
         if system_name == self.system_name:
             return True
         self.system_name = system_name
+        self._last_system_data_signature = None
         if self.system_locked:
             self.locked_system_name = system_name
         self.active_focus = self._load_active_focus()
@@ -468,14 +634,61 @@ class ConstructionPanel(QWidget):
             base += 2
         return min(6, max(0, base))
 
+    @staticmethod
+    def _system_data_signature(system_name: str, bodies: dict[str, Any]) -> tuple[Any, ...]:
+        """Cheap fingerprint of body data that can affect colony planning.
+
+        Journal/Cargo/Market writes can all emit UI refreshes even when the
+        system map has not changed.  Deep planning must not be regenerated for
+        those unrelated events.
+        """
+
+        rows: list[tuple[Any, ...]] = []
+        for name, body in (bodies or {}).items():
+            parents: list[tuple[str, str]] = []
+            for parent in getattr(body, "parents", []) or []:
+                if not isinstance(parent, dict):
+                    continue
+                for kind, value in parent.items():
+                    parents.append((str(kind), str(value)))
+            radius_m = getattr(body, "radius_m", None)
+            mass_em = getattr(body, "mass_em", None)
+            distance_ls = getattr(body, "distance_ls", None)
+            rows.append((
+                str(name),
+                str(getattr(body, "kind", "Unknown") or "Unknown"),
+                str(getattr(body, "subtype", "") or ""),
+                bool(getattr(body, "landable", False)),
+                getattr(body, "body_id", None),
+                round(float(radius_m), 3) if radius_m is not None else None,
+                round(float(mass_em), 8) if mass_em is not None else None,
+                str(getattr(body, "atmosphere", "") or ""),
+                str(getattr(body, "volcanism", "") or ""),
+                round(float(distance_ls), 5) if distance_ls is not None else None,
+                tuple(parents),
+            ))
+        rows.sort(key=lambda row: row[0].casefold())
+        return (str(system_name or "Unknown system"), tuple(rows))
+
     def set_system_data(self, system_name: str, bodies: dict[str, Any]) -> None:
-        """Load every indexed body while preserving player-entered corrections."""
+        """Apply system-map changes without replanning on every journal event."""
         self.current_system_name = system_name or "Unknown system"
         if not self.set_system(system_name):
             # System Status Lock is active and the commander has jumped away.
             # Keep the planning tabs pinned to the locked colony system.
             return
+
+        signature = self._system_data_signature(self.system_name, bodies)
+        if signature == self._last_system_data_signature:
+            return
+        self._last_system_data_signature = signature
+
         known = {site.body: site for site in self.plan.sites}
+        id_to_name = {
+            int(getattr(body, "body_id")): name
+            for name, body in bodies.items()
+            if getattr(body, "body_id", None) is not None
+        }
         changed = False
         for name, body in sorted(
             bodies.items(),
@@ -493,16 +706,42 @@ class ConstructionPanel(QWidget):
             mass_em = getattr(body, "mass_em", None)
             atmosphere = str(getattr(body, "atmosphere", "") or "")
             volcanism = str(getattr(body, "volcanism", "") or "")
+            distance_ls = getattr(body, "distance_ls", None)
+            parent_body = ""
+            for parent in reversed(getattr(body, "parents", []) or []):
+                if not isinstance(parent, dict):
+                    continue
+                parent_id = next(iter(parent.values()), None)
+                try:
+                    parent_name = id_to_name.get(int(parent_id))
+                except (TypeError, ValueError):
+                    parent_name = None
+                if parent_name and parent_name != name:
+                    parent_body = parent_name
+                    break
 
             if name in known:
                 site = known[name]
-                site.body_type = body_type
-                site.landable = landable
-                site.body_id = body_id
-                site.radius_km = radius_km
-                site.mass_em = mass_em
-                site.atmosphere = atmosphere
-                site.volcanism = volcanism
+                old_metadata = (
+                    site.body_type, site.landable, site.body_id, site.radius_km,
+                    site.mass_em, site.atmosphere, site.volcanism,
+                    site.parent_body, site.distance_ls,
+                )
+                new_metadata = (
+                    body_type, landable, body_id, radius_km, mass_em, atmosphere,
+                    volcanism, parent_body, distance_ls,
+                )
+                if old_metadata != new_metadata:
+                    site.body_type = body_type
+                    site.landable = landable
+                    site.body_id = body_id
+                    site.radius_km = radius_km
+                    site.mass_em = mass_em
+                    site.atmosphere = atmosphere
+                    site.volcanism = volcanism
+                    site.parent_body = parent_body
+                    site.distance_ls = distance_ls
+                    changed = True
                 continue
 
             estimated_surface = self._estimate_surface_slots(body)
@@ -519,6 +758,8 @@ class ConstructionPanel(QWidget):
                     radius_km=radius_km,
                     atmosphere=atmosphere,
                     volcanism=volcanism,
+                    parent_body=parent_body,
+                    distance_ls=distance_ls,
                 )
             )
             changed = True
@@ -526,8 +767,14 @@ class ConstructionPanel(QWidget):
         self.plan.sites.sort(key=lambda site: self._body_sort_key(site.body, site.body_id))
         if changed:
             self._save_plan()
+
+        # FSS can discover several bodies in a burst.  Coalesce those changes so
+        # a twenty-body scan produces one deep-plan rebuild instead of twenty.
+        self._system_replan_timer.start()
+
+    def _apply_system_data_replan(self) -> None:
         self._regenerate_facilities()
-        self._render_sites()
+        # _render_queue also refreshes Sites/Materials, so paint once.
         self._render_queue()
 
     def set_construction_depots(self, depots: dict[str, dict]) -> None:
@@ -556,6 +803,46 @@ class ConstructionPanel(QWidget):
         depot = candidates[0]
 
         facility = self._focus_facility()
+        started_now = False
+        location_changed = False
+        completed_now = False
+        if facility is not None and facility in self.plan.facilities:
+            # Do not let a cached depot from an older build "start" a newly
+            # tracked queue row. The player can simply revisit the real site to
+            # generate a fresh depot event if tracking began after construction.
+            if facility.status == "Building now" and not facility.construction_started:
+                tracked_text = str(self.active_focus.get("tracked_at_utc", "") or "")
+                depot_text = str(depot.get("timestamp", "") or "")
+                if tracked_text and depot_text:
+                    try:
+                        tracked_dt = datetime.fromisoformat(tracked_text.replace("Z", "+00:00"))
+                        depot_dt = datetime.fromisoformat(depot_text.replace("Z", "+00:00"))
+                        if depot_dt < tracked_dt - timedelta(seconds=5):
+                            return
+                    except ValueError:
+                        pass
+
+                # Selecting a tracked build is only planning intent. A fresh
+                # ColonisationConstructionDepot event proves Elite actually made
+                # the site and spent its point cost. Its body is authoritative.
+                location_changed = self._record_actual_location(
+                    facility, str(depot.get("body", "") or "")
+                )
+                facility.construction_started = True
+                started_now = True
+            elif facility.status == "Building now" and facility.construction_started:
+                location_changed = self._record_actual_location(
+                    facility, str(depot.get("body", "") or "")
+                )
+
+            if bool(depot.get("complete", False)) and facility.status == "Building now":
+                facility.status = "Complete"
+                facility.construction_started = True
+                facility.location_confirmed = True
+                completed_now = True
+                if self.plan.current_build == facility.role:
+                    self.plan.current_build = "Not selected"
+                    self.plan.current_location = "Not selected"
         saved_rows = self._stored_materials_for(facility, include_live=False)
         saved_sources = {
             commodity_key(row.commodity): row.source
@@ -601,16 +888,34 @@ class ConstructionPanel(QWidget):
             (row.commodity, row.required, row.delivered, row.carrier)
             for row in resources
         ]
+        depot_changed = previous_key != next_key or previous_signature != next_signature
         self.live_depot = depot
         self.live_depot_resources = resources
 
-        if facility is not None and resources:
+        # The monitor calls this on every construction-mode refresh.  Persist and
+        # repaint only when Elite actually changed the depot snapshot (or when the
+        # first depot event proves that construction started).
+        if facility is not None and resources and (depot_changed or started_now or location_changed or completed_now):
             key = self._material_key_for(facility)
             self.plan.materials_by_build[key] = [self._material_dict(row) for row in resources]
             self._save_plan()
-            self._save_active_focus_record(facility, resources)
+            if not completed_now:
+                self._save_active_focus_record(facility, resources)
 
-        if previous_key != next_key or previous_signature != next_signature:
+        if completed_now:
+            self.active_focus = {}
+            self.settings.remove("construction/active_focus")
+            self._save_plan()
+            self._regenerate_facilities()
+            self._render_queue()
+            self._update_overview_status()
+        elif started_now or location_changed:
+            self._save_plan()
+            self._save_active_focus_record(facility, resources)
+            self._render_queue()
+            self._update_overview_status()
+
+        if depot_changed:
             self._render_materials()
 
     def set_logistics_data(
@@ -621,6 +926,7 @@ class ConstructionPanel(QWidget):
         carrier_inventory_known: bool,
         carrier_known_commodities: set[str],
         market_sources: dict[str, str],
+        market_sources_by_system: dict[str, dict[str, str]],
     ) -> None:
         """Apply live ship cargo, tracked carrier cargo, and learned market sources."""
         next_ship = {
@@ -643,6 +949,18 @@ class ConstructionPanel(QWidget):
             for name, location in (market_sources or {}).items()
             if commodity_key(name) and str(location).strip()
         }
+        next_sources_by_system: dict[str, dict[str, str]] = {}
+        for name, systems in (market_sources_by_system or {}).items():
+            key = commodity_key(name)
+            if not key or not isinstance(systems, dict):
+                continue
+            cleaned = {
+                str(system).strip(): str(station).strip()
+                for system, station in systems.items()
+                if str(system).strip() and str(station).strip()
+            }
+            if cleaned:
+                next_sources_by_system[key] = cleaned
         next_known = bool(carrier_inventory_known)
         next_ship_known = bool(ship_inventory_known)
 
@@ -652,6 +970,7 @@ class ConstructionPanel(QWidget):
             and next_inventory == self.carrier_inventory
             and next_known_commodities == self.carrier_known_commodities
             and next_sources == self.market_sources
+            and next_sources_by_system == self.market_sources_by_system
             and next_known == self.carrier_inventory_known
         ):
             return
@@ -661,6 +980,7 @@ class ConstructionPanel(QWidget):
         self.carrier_inventory = next_inventory
         self.carrier_known_commodities = next_known_commodities
         self.market_sources = next_sources
+        self.market_sources_by_system = next_sources_by_system
         self.carrier_inventory_known = next_known
         self._render_materials()
 
@@ -702,10 +1022,18 @@ class ConstructionPanel(QWidget):
         self.tabs.addTab(self._build_materials_tab(), "Materials")
         outer.addWidget(self.tabs, stretch=1)
 
-        self.edit_button.clicked.connect(lambda: self.set_editing(True))
-        self.cancel_button.clicked.connect(self.cancel_edits)
-        self.save_button.clicked.connect(self.save_edits)
-        self.primary_combo.currentTextChanged.connect(self._preview_queue)
+        self.edit_button.clicked.connect(lambda: self._run_user_action(lambda: self.set_editing(True)))
+        self.cancel_button.clicked.connect(lambda: self._run_user_action(self.cancel_edits))
+        self.save_button.clicked.connect(lambda: self._run_user_action(self.save_edits))
+        self.primary_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
+        self.secondary_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
+        self.plan_scope_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
 
     def _box(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
@@ -729,35 +1057,123 @@ class ConstructionPanel(QWidget):
         self.overview_build_system_value = QLabel("Unknown system")
         self.overview_build_system_value.setObjectName("constructionBigValue")
         self.overview_system_state_value = QLabel("Following current system")
-        self.overview_system_state_value.setObjectName("constructionStatusPill")
+        self.overview_system_state_value.setObjectName("constructionMuted")
+
+        # Locked mode is intentionally compact.  The normal Overview is a status
+        # dashboard, not a settings form; the full dropdowns only appear while
+        # Edit Plan is active so the card remains usable in a non-maximised window.
+        self.overview_goal_summary = QLabel("")
+        self.overview_goal_summary.setObjectName("constructionGoalSummary")
+        self.overview_goal_summary.setWordWrap(True)
+        self.overview_scope_summary = QLabel("")
+        self.overview_scope_summary.setObjectName("constructionMuted")
+        self.overview_scope_summary.setWordWrap(True)
+        self.overview_workflow_hint = QLabel(
+            "Daily workflow: Build Queue → Track NEXT Build → Materials. "
+            "Use Edit Plan only to change goals, slot capacity, or existing facilities."
+        )
+        self.overview_workflow_hint.setObjectName("constructionWorkflowHint")
+        self.overview_workflow_hint.setWordWrap(True)
+        self.overview_edit_button = QPushButton("Edit Plan")
+        self.overview_edit_button.setObjectName("constructionPrimaryAction")
+        self.overview_edit_button.clicked.connect(
+            lambda: self._run_user_action(lambda: self.set_editing(True))
+        )
+
         self.primary_combo = QComboBox()
         self.primary_combo.addItems(PRIMARY_GOALS)
+        self.primary_goal_status = QLabel("Not started")
+        self.primary_goal_status.setObjectName("constructionGoalStatus")
         self.secondary_combo = QComboBox()
         self.secondary_combo.addItems(SECONDARY_GOALS)
+        self.secondary_goal_status = QLabel("Not selected")
+        self.secondary_goal_status.setObjectName("constructionGoalStatus")
+        self.plan_scope_combo = QComboBox()
+        self.plan_scope_combo.addItems(PLAN_SCOPES)
+        self.plan_phase_status = QLabel("Selected goals")
+        self.plan_phase_status.setObjectName("constructionPhaseStatus")
         self.phase_edit = QLineEdit()
         self.phase_edit.hide()
+
         p.addWidget(self.overview_build_system_value)
         p.addWidget(self.overview_system_state_value)
-        p.addWidget(QLabel("Primary goal"))
-        p.addWidget(self.primary_combo)
-        p.addWidget(QLabel("Secondary goal"))
-        p.addWidget(self.secondary_combo)
+        p.addWidget(self.overview_goal_summary)
+        p.addWidget(self.overview_scope_summary)
+        p.addWidget(self.overview_workflow_hint)
+        p.addWidget(self.overview_edit_button)
+
+        self.goal_editor = QWidget()
+        goal_grid = QGridLayout(self.goal_editor)
+        goal_grid.setContentsMargins(0, 2, 0, 0)
+        goal_grid.setHorizontalSpacing(8)
+        goal_grid.setVerticalSpacing(3)
+        self.primary_goal_label = QLabel("Primary")
+        self.secondary_goal_label = QLabel("Secondary")
+        self.plan_scope_label = QLabel("Scope")
+        goal_grid.addWidget(self.primary_goal_label, 0, 0)
+        goal_grid.addWidget(self.primary_combo, 0, 1)
+        goal_grid.addWidget(self.primary_goal_status, 0, 2)
+        goal_grid.addWidget(self.secondary_goal_label, 1, 0)
+        goal_grid.addWidget(self.secondary_combo, 1, 1)
+        goal_grid.addWidget(self.secondary_goal_status, 1, 2)
+        goal_grid.addWidget(self.plan_scope_label, 2, 0)
+        goal_grid.addWidget(self.plan_scope_combo, 2, 1)
+        goal_grid.addWidget(self.plan_phase_status, 2, 2)
+        self.plan_edit_hint = QLabel(
+            "Choose the two goals and scope. Existing colony? Add completed facilities on the Sites tab. "
+            "You normally do not need Advanced setup."
+        )
+        self.plan_edit_hint.setObjectName("constructionWorkflowHint")
+        self.plan_edit_hint.setWordWrap(True)
+        goal_grid.addWidget(self.plan_edit_hint, 3, 0, 1, 3)
+        goal_grid.setColumnStretch(1, 1)
+        p.addWidget(self.goal_editor)
+
+        self.advanced_setup_button = QPushButton("Advanced setup ▸")
+        self.advanced_setup_button.setCheckable(True)
+        self.advanced_setup_button.setObjectName("constructionSecondaryAction")
+        self.advanced_setup_button.setToolTip(
+            "Show primary-port corrections and manual T2/T3 calibration. Most plans do not need these controls."
+        )
+        self.advanced_setup_button.toggled.connect(self._set_advanced_setup_visible)
+        p.addWidget(self.advanced_setup_button)
 
         # Existing-colony details are setup data, not daily hauling information.
         # Keep them available only while Edit Plan is active.
         self.colony_setup_editor = QWidget()
-        colony_layout = QVBoxLayout(self.colony_setup_editor)
-        colony_layout.setContentsMargins(0, 6, 0, 0)
-        colony_layout.setSpacing(4)
-        self.primary_port_check = QCheckBox("Primary port is complete")
+        colony_layout = QGridLayout(self.colony_setup_editor)
+        colony_layout.setContentsMargins(0, 4, 0, 0)
+        colony_layout.setHorizontalSpacing(8)
+        colony_layout.setVerticalSpacing(3)
+        self.primary_port_check = QCheckBox("Primary port complete")
         self.primary_port_name_edit = QLineEdit()
         self.primary_port_location_edit = QLineEdit()
-        colony_layout.addWidget(self.primary_port_check)
-        colony_layout.addWidget(QLabel("Primary port / station name"))
-        colony_layout.addWidget(self.primary_port_name_edit)
-        colony_layout.addWidget(QLabel("Occupied location"))
-        colony_layout.addWidget(self.primary_port_location_edit)
+        colony_layout.addWidget(self.primary_port_check, 0, 0, 1, 3)
+        colony_layout.addWidget(QLabel("Primary port"), 1, 0)
+        colony_layout.addWidget(self.primary_port_name_edit, 1, 1, 1, 2)
+        colony_layout.addWidget(QLabel("Location"), 2, 0)
+        colony_layout.addWidget(self.primary_port_location_edit, 2, 1, 1, 2)
+
+        self.point_calibration_check = QCheckBox("Use in-game construction-point calibration")
+        self.point_calibration_check.setToolTip(
+            "Calibrate Observatory to the T2/T3 balance shown by Elite. "
+            "The saved difference is then carried forward while Observatory applies later known costs/rewards."
+        )
+        self.point_t2_spin = QSpinBox()
+        self.point_t2_spin.setRange(0, 999)
+        self.point_t3_spin = QSpinBox()
+        self.point_t3_spin.setRange(0, 999)
+        colony_layout.addWidget(self.point_calibration_check, 3, 0, 1, 3)
+        colony_layout.addWidget(QLabel("Game T2"), 4, 0)
+        colony_layout.addWidget(self.point_t2_spin, 4, 1)
+        colony_layout.addWidget(QLabel("Game T3"), 4, 2)
+        colony_layout.addWidget(self.point_t3_spin, 4, 3)
+        self.point_calibration_note = QLabel("")
+        self.point_calibration_note.setObjectName("constructionMuted")
+        self.point_calibration_note.setWordWrap(True)
+        colony_layout.addWidget(self.point_calibration_note, 5, 0, 1, 4)
         p.addWidget(self.colony_setup_editor)
+        self.colony_setup_editor.hide()
         p.addStretch()
 
         current, c = self._box("Active Job")
@@ -777,9 +1193,9 @@ class ConstructionPanel(QWidget):
         self.progress.setValue(0)
         c.addWidget(QLabel("Material progress"))
         c.addWidget(self.progress)
-        self.undo_focus_button = QPushButton("Undo Focus Change")
-        self.undo_focus_button.setToolTip("Restore the previous focus build if this was selected by mistake.")
-        self.undo_focus_button.clicked.connect(self.undo_focus_change)
+        self.undo_focus_button = QPushButton("Undo Build Selection")
+        self.undo_focus_button.setToolTip("Restore the previously tracked build if this one was selected by mistake.")
+        self.undo_focus_button.clicked.connect(lambda: self._run_user_action(self.undo_focus_change))
         c.addWidget(self.undo_focus_button)
         c.addStretch()
 
@@ -796,16 +1212,19 @@ class ConstructionPanel(QWidget):
         n.addWidget(self.next_location_value)
         n.addWidget(QLabel("Why"))
         n.addWidget(self.next_reason_value)
-        self.set_next_current_button = QPushButton("Set This as Focus Build")
-        self.set_next_current_button.clicked.connect(self.set_recommendation_as_current)
+        self.set_next_current_button = QPushButton("Track NEXT Build")
+        self.set_next_current_button.setToolTip("Track the recommended build for materials. This does not start construction in Elite.")
+        self.set_next_current_button.clicked.connect(
+            lambda: self._run_user_action(self.set_recommendation_as_current)
+        )
         n.addWidget(self.set_next_current_button)
         n.addStretch()
 
         action, a = self._box("Next Action")
-        self.next_action_title = QLabel("Choose a focus build")
+        self.next_action_title = QLabel("Track the next build")
         self.next_action_title.setObjectName("constructionBigValue")
         self.next_action_title.setWordWrap(True)
-        self.next_action_detail = QLabel("Set the recommended build as Focus to begin tracking materials.")
+        self.next_action_detail = QLabel("Track the recommended build to begin material monitoring. Elite still controls construction.")
         self.next_action_detail.setWordWrap(True)
         self.next_action_source = QLabel("Paste Location")
         self.next_action_source.setObjectName("materialSourcePill")
@@ -824,6 +1243,9 @@ class ConstructionPanel(QWidget):
         a.addLayout(action_buttons)
         a.addStretch()
 
+        self.overview_grid = grid
+        self.overview_next_box = next_box
+        self.overview_action_box = action
         grid.addWidget(purpose, 0, 0)
         grid.addWidget(current, 0, 1)
         grid.addWidget(next_box, 1, 0)
@@ -842,12 +1264,39 @@ class ConstructionPanel(QWidget):
         summary = QHBoxLayout()
         self.site_summary = QLabel("Sites are calculated from the rows below.")
         self.site_summary.setObjectName("constructionNotice")
+        # Retained in saved plans for compatibility, but hidden because v3.0.8
+        # exposed this control even though it does not affect planning.
         self.concurrent_spin = QSpinBox()
         self.concurrent_spin.setRange(1, 20)
+        self.concurrent_spin.hide()
         summary.addWidget(self.site_summary, stretch=1)
-        summary.addWidget(QLabel("Concurrent build limit"))
-        summary.addWidget(self.concurrent_spin)
         layout.addLayout(summary)
+
+        self.sites_help = QLabel(
+            "Daily view: ✓ built, ⚒ building, → next, • planned. "
+            "During Edit Plan, correct used/total slots or add facilities that already existed before Observatory."
+        )
+        self.sites_help.setObjectName("constructionWorkflowHint")
+        self.sites_help.setWordWrap(True)
+        layout.addWidget(self.sites_help)
+
+        self.sites_edit_actions = QWidget()
+        sites_actions = QHBoxLayout(self.sites_edit_actions)
+        sites_actions.setContentsMargins(0, 0, 0, 0)
+        self.add_existing_facility_button = QPushButton("Add Existing Facility…")
+        self.add_existing_facility_button.setObjectName("constructionPrimaryAction")
+        self.add_existing_facility_button.setToolTip(
+            "Select a body row, then choose a facility already completed in this system. No exact typing required."
+        )
+        self.add_existing_facility_button.clicked.connect(
+            lambda: self._run_user_action(self.add_existing_facility_to_selected_site)
+        )
+        sites_actions.addWidget(self.add_existing_facility_button)
+        self.sites_edit_note = QLabel("Select a body first. You can still edit the Builds column manually if needed.")
+        self.sites_edit_note.setObjectName("constructionMuted")
+        sites_actions.addWidget(self.sites_edit_note, stretch=1)
+        self.sites_edit_actions.hide()
+        layout.addWidget(self.sites_edit_actions)
 
         self.sites_next = QLabel("Next build: enter or confirm site totals")
         self.sites_next.setObjectName("constructionNextBuild")
@@ -910,21 +1359,46 @@ class ConstructionPanel(QWidget):
         self.queue_table.setHorizontalHeaderLabels([
             "Order", "Recommended build", "Where to build", "Site", "Points", "Reason", "Status", "Action"
         ])
-        self.queue_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Keep every queue column user-resizable.  Stretch mode made the header
+        # handles effectively fixed, which was especially painful for the long
+        # facility names and prerequisite explanations.
+        queue_header = self.queue_table.horizontalHeader()
+        queue_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        queue_header.setMinimumSectionSize(55)
+        for column, width in enumerate((60, 320, 170, 80, 190, 360, 105, 105)):
+            queue_header.resizeSection(column, width)
         self.queue_table.verticalHeader().setVisible(False)
         self.queue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.queue_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.queue_table.customContextMenuRequested.connect(self._show_queue_context_menu)
         layout.addWidget(self.queue_table)
 
         actions = QHBoxLayout()
-        self.queue_focus_button = QPushButton("Set Selected as Focus Build")
-        self.queue_complete_button = QPushButton("Mark Selected Complete")
+        self.queue_next_button = QPushButton("Track NEXT Build")
+        self.queue_next_button.setObjectName("constructionPrimaryAction")
+        self.queue_next_button.setToolTip(
+            "Track the planner's NEXT build for materials. This does not start construction in Elite."
+        )
+        self.queue_focus_button = QPushButton("Track Selected")
+        self.queue_complete_button = QPushButton("Mark Complete (manual)")
+        self.queue_complete_button.setToolTip(
+            "Fallback only: use this if Elite/journal completion was not detected automatically."
+        )
         self.queue_skip_button = QPushButton("Skip Selected")
-        self.queue_focus_button.clicked.connect(self.set_selected_queue_as_current)
-        self.queue_complete_button.clicked.connect(self.mark_selected_queue_complete)
-        self.queue_skip_button.clicked.connect(self.skip_selected_queue_item)
+        self.queue_location_button = QPushButton("Change Location…")
+        self.queue_location_button.setToolTip(
+            "Correct a planned or actual body/slot. Observatory validates surface/orbit type and replans around the change."
+        )
+        self.queue_next_button.clicked.connect(lambda: self._run_user_action(self.set_recommendation_as_current))
+        self.queue_focus_button.clicked.connect(lambda: self._run_user_action(self.set_selected_queue_as_current))
+        self.queue_complete_button.clicked.connect(lambda: self._run_user_action(self.mark_selected_queue_complete))
+        self.queue_skip_button.clicked.connect(lambda: self._run_user_action(self.skip_selected_queue_item))
+        self.queue_location_button.clicked.connect(lambda: self._run_user_action(self.change_selected_queue_location))
+        actions.addWidget(self.queue_next_button)
         actions.addWidget(self.queue_focus_button)
         actions.addWidget(self.queue_complete_button)
         actions.addWidget(self.queue_skip_button)
+        actions.addWidget(self.queue_location_button)
         actions.addStretch()
         layout.addLayout(actions)
         return page
@@ -935,7 +1409,7 @@ class ConstructionPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
-        self.materials_context = QLabel("No focus build selected")
+        self.materials_context = QLabel("No build is being tracked")
         self.materials_context.setObjectName("constructionNextBuild")
         self.materials_context.setWordWrap(True)
         layout.addWidget(self.materials_context)
@@ -947,7 +1421,7 @@ class ConstructionPanel(QWidget):
         next_haul_layout.setSpacing(10)
         next_haul_text = QVBoxLayout()
         next_haul_text.setSpacing(2)
-        self.next_haul_title = QLabel("NEXT HAUL: choose a focus build")
+        self.next_haul_title = QLabel("NEXT HAUL: track a build")
         self.next_haul_title.setObjectName("nextHaulTitle")
         self.next_haul_detail = QLabel("")
         self.next_haul_detail.setObjectName("constructionMuted")
@@ -970,15 +1444,21 @@ class ConstructionPanel(QWidget):
         self.set_carrier_empty_button.setToolTip(
             "Use after the carrier has zero of every commodity listed for this construction build."
         )
-        self.set_carrier_empty_button.clicked.connect(self.mark_tracked_carrier_empty)
+        self.set_carrier_empty_button.clicked.connect(
+            lambda: self._run_user_action(self.mark_tracked_carrier_empty)
+        )
         self.ship_capacity_spin = QSpinBox()
         self.ship_capacity_spin.setRange(1, 50000)
         self.ship_capacity_spin.setSuffix(" t")
         self.add_material_button = QPushButton("Add Material Row")
         self.remove_material_button = QPushButton("Remove Selected")
-        self.add_material_button.clicked.connect(self.add_material_row)
-        self.remove_material_button.clicked.connect(self.remove_selected_material_row)
-        self.ship_capacity_spin.valueChanged.connect(lambda _value: self._render_materials())
+        self.add_material_button.clicked.connect(lambda: self._run_user_action(self.add_material_row))
+        self.remove_material_button.clicked.connect(
+            lambda: self._run_user_action(self.remove_selected_material_row)
+        )
+        self.ship_capacity_spin.valueChanged.connect(
+            lambda _value: self._run_user_action(self._render_materials)
+        )
         toolbar.addWidget(self.logistics_status_label)
         toolbar.addWidget(self.set_carrier_empty_button)
         toolbar.addStretch()
@@ -987,6 +1467,13 @@ class ConstructionPanel(QWidget):
         toolbar.addWidget(self.add_material_button)
         toolbar.addWidget(self.remove_material_button)
         layout.addLayout(toolbar)
+
+        self.material_source_legend = QLabel(
+            "Active shortages: Purple outline = local source • Blue source = last purchase • "
+            "Amber = unknown • Stocked/completed rows are muted; source is retained"
+        )
+        self.material_source_legend.setObjectName("constructionWorkflowHint")
+        layout.addWidget(self.material_source_legend)
 
         self.materials_table = QTableWidget(0, 8)
         self.materials_table.setHorizontalHeaderLabels([
@@ -997,6 +1484,7 @@ class ConstructionPanel(QWidget):
         header.setSortIndicatorShown(True)
         self.materials_table.verticalHeader().setVisible(False)
         self.materials_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.materials_table.setItemDelegate(LocalMaterialRowDelegate(self.materials_table))
         self.materials_table.itemChanged.connect(self.on_material_item_changed)
         self.materials_table.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
         self.copy_material_source_action = QAction("Copy Material Source", self.materials_table)
@@ -1026,7 +1514,7 @@ class ConstructionPanel(QWidget):
         focus = self._focus_facility()
         if focus is not None:
             return focus
-        return next((facility for facility in self.plan.facilities if facility.status == "Queued"), None)
+        return self._next_buildable_facility()
 
     def _is_active_focus_facility(self, facility: Optional[FacilityData]) -> bool:
         if facility is None or not self.active_focus:
@@ -1113,6 +1601,39 @@ class ConstructionPanel(QWidget):
             and ("*" in self.carrier_known_commodities or key in self.carrier_known_commodities)
         )
 
+    @staticmethod
+    def _normalise_system_name(name: str) -> str:
+        return " ".join(str(name or "").split()).casefold()
+
+    def _local_market_source(self, key: str) -> str:
+        """Return a known station selling this commodity in the build system."""
+        wanted = self._normalise_system_name(self.focus_system_name())
+        if not wanted or wanted == "unknown system":
+            return ""
+        systems = self.market_sources_by_system.get(key, {})
+        for system, station in systems.items():
+            if self._normalise_system_name(system) == wanted and str(station).strip():
+                return str(station).strip()
+        return ""
+
+    def _material_source_info(self, key: str, saved_source: str) -> tuple[str, bool, bool]:
+        """Choose source text with local colony markets taking priority.
+
+        Returns (source, is_local, is_auto_external).  A known local market stays
+        pinned even after buying the same commodity elsewhere.  Otherwise the
+        latest MarketBuy source replaces stale automatic/legacy source names.
+        """
+        local = self._local_market_source(key) if key else ""
+        if local:
+            return local, True, False
+
+        recent = str(self.market_sources.get(key, "") or "").strip() if key else ""
+        if recent:
+            return recent, False, True
+
+        source = str(saved_source or "").strip()
+        return source, False, False
+
     def _apply_logistics_overlays(self, rows: list[MaterialData]) -> list[MaterialData]:
         overlaid: list[MaterialData] = []
         for row in rows:
@@ -1124,9 +1645,7 @@ class ConstructionPanel(QWidget):
                 else 0
             )
 
-            source = row.source
-            if key and self._is_placeholder_source(source):
-                source = self.market_sources.get(key, source)
+            source, _is_local, _is_auto_external = self._material_source_info(key, row.source)
 
             overlaid.append(MaterialData(
                 commodity=row.commodity,
@@ -1193,7 +1712,7 @@ class ConstructionPanel(QWidget):
             self.active_focus["materials"] = [self._material_dict(row) for row in rows]
             self.active_focus["ship_capacity_tons"] = int(self.plan.ship_capacity_tons or 1)
             self.settings.setValue("construction/active_focus", json.dumps(self.active_focus, sort_keys=True))
-            self.settings.sync()
+            self._schedule_settings_sync()
             return
         key = self._material_key_for(facility)
         self.plan.materials_by_build[key] = [
@@ -1229,9 +1748,11 @@ class ConstructionPanel(QWidget):
         # The source/location field is intentionally editable while the plan is
         # locked.  Save it immediately so a pasted station is not lost.
         if item.column() == 7:
-            self._store_material_edits()
-            self._save_plan()
-            self._render_materials()
+            def save_source_change() -> None:
+                self._store_material_edits()
+                self._save_plan()
+                self._render_materials()
+            self._run_user_action(save_source_change)
 
     def copy_selected_material_cell(self) -> None:
         item = self.materials_table.currentItem()
@@ -1279,10 +1800,26 @@ class ConstructionPanel(QWidget):
         """Return title, detail, source and progress for the active focus build."""
         facility = self._focus_facility()
         if facility is None:
+            next_facility = self._next_buildable_facility()
+            if next_facility is not None:
+                return (
+                    "Track the next build",
+                    f"Track NEXT ({next_facility.role}) to begin material monitoring.",
+                    "Paste Location",
+                    0,
+                )
+            blocked = next((row for row in self.plan.facilities if row.status == "Queued"), None)
+            if blocked is not None:
+                return (
+                    "No buildable next facility",
+                    f"{blocked.role}: {self._facility_block_reason(blocked)}",
+                    "No source needed",
+                    0,
+                )
             return (
-                "Choose a focus build",
-                "Set the recommended build as Focus to begin tracking materials.",
-                "Paste Location",
+                "Plan complete",
+                "No queued construction remains. Change Plan Scope or goals if you want more development.",
+                "No source needed",
                 0,
             )
 
@@ -1290,39 +1827,45 @@ class ConstructionPanel(QWidget):
         required_total = sum(max(0, row.required) for row in rows)
         delivered_total = sum(min(max(0, row.delivered), max(0, row.required)) for row in rows)
         progress = int((delivered_total * 100) / required_total) if required_total else 0
-        needed = sorted(
-            (row for row in rows if row.still_needed > 0),
-            key=lambda row: row.still_needed,
+        delivery_needed = sorted(
+            (row for row in rows if row.delivery_remaining > 0),
+            key=lambda row: row.delivery_remaining,
+            reverse=True,
+        )
+        acquisition_needed = sorted(
+            (row for row in delivery_needed if row.acquisition_needed > 0),
+            key=lambda row: row.acquisition_needed,
             reverse=True,
         )
 
-        if needed:
-            material = needed[0]
+        if acquisition_needed:
+            material = acquisition_needed[0]
             capacity = max(1, int(self.plan.ship_capacity_tons or 1))
-            trips = (material.still_needed + capacity - 1) // capacity
+            trips = (material.delivery_remaining + capacity - 1) // capacity
             source = material.source.strip() if material.source else "Paste Location"
             if self._is_placeholder_source(source):
                 source = "Paste Location"
             return (
-                f"Deliver {material.commodity}",
-                f"{material.still_needed:,} t left • {trips} ship trip{'s' if trips != 1 else ''}",
+                f"Haul {material.commodity}",
+                f"{material.delivery_remaining:,} t still needs depot delivery • "
+                f"{material.acquisition_needed:,} t still needs to be acquired • "
+                f"{trips} delivery trip{'s' if trips != 1 else ''}",
                 source,
                 progress,
             )
 
-        if rows:
-            remaining_delivery = sum(
-                max(0, int(row.required) - int(row.delivered)) for row in rows
+        if delivery_needed:
+            remaining_delivery = sum(row.delivery_remaining for row in delivery_needed)
+            stocked_for_build = sum(row.on_hand_for_build for row in delivery_needed)
+            return (
+                "Deliver stocked materials",
+                f"{remaining_delivery:,} t still needs depot delivery • "
+                f"{stocked_for_build:,} t of that amount is on ship/carrier",
+                "No source needed",
+                progress,
             )
-            if remaining_delivery > 0:
-                stocked = sum(max(0, int(row.ship) + int(row.carrier)) for row in rows)
-                return (
-                    "Deliver stocked materials",
-                    f"{remaining_delivery:,} t still needs depot delivery • "
-                    f"{stocked:,} t currently on ship/carrier",
-                    "No source needed",
-                    progress,
-                )
+
+        if rows:
             return (
                 "Material delivery complete",
                 "Return to the construction site and verify the build completes.",
@@ -1336,6 +1879,37 @@ class ConstructionPanel(QWidget):
             "Paste Location",
             0,
         )
+
+    def _material_source_visual_kind(self, source: str) -> str:
+        """Return a compact UI classification for a displayed material source."""
+        text = str(source or "").strip()
+        if self._is_placeholder_source(text):
+            return "missing"
+        if text == "No source needed":
+            return "none"
+
+        wanted = self._normalise_system_name(self.focus_system_name())
+        if wanted and wanted != "unknown system":
+            for systems in self.market_sources_by_system.values():
+                if not isinstance(systems, dict):
+                    continue
+                for system, station in systems.items():
+                    if (
+                        self._normalise_system_name(system) == wanted
+                        and str(station or "").strip() == text
+                    ):
+                        return "local"
+
+        if any(str(station or "").strip() == text for station in self.market_sources.values()):
+            return "external"
+        return "manual"
+
+    @staticmethod
+    def _apply_source_pill_kind(label: QLabel, kind: str, missing: bool) -> None:
+        label.setProperty("sourceKind", kind)
+        label.setProperty("missing", "true" if missing else "false")
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     def _update_overview_status(self) -> None:
         if not hasattr(self, "overview_build_system_value"):
@@ -1352,6 +1926,27 @@ class ConstructionPanel(QWidget):
             state_text = f"🔓 Following current system: {current_system}"
         self.overview_system_state_value.setText(state_text)
 
+        effective_primary, effective_secondary = self._effective_goal_names()
+        effective_scope = self._effective_plan_scope()
+        primary_progress, secondary_progress = self.selected_goal_progress(
+            effective_primary, effective_secondary
+        )
+        primary_text = self._progress_label(primary_progress)
+        secondary_text = self._progress_label(secondary_progress)
+        phase_text = self.current_development_phase(
+            effective_primary, effective_secondary, effective_scope
+        )
+        self.primary_goal_status.setText(primary_text)
+        self.secondary_goal_status.setText(secondary_text)
+        self.plan_phase_status.setText(phase_text)
+        self.overview_goal_summary.setText(
+            f"Primary: {effective_primary} — {primary_text}\n"
+            f"Secondary: {effective_secondary} — {secondary_text}"
+        )
+        self.overview_scope_summary.setText(
+            f"Scope: {effective_scope}  •  Phase: {phase_text}"
+        )
+
         build_name, build_location = self.focus_build_display()
         self.current_build_value.setText(build_name)
         self.current_location_value.setText(build_location)
@@ -1364,17 +1959,14 @@ class ConstructionPanel(QWidget):
         self.next_action_source.setText(source)
         source_available = not self._is_placeholder_source(source) and source != "No source needed"
         source_missing = not source_available and source != "No source needed"
-        self.next_action_source.setProperty("missing", "true" if source_missing else "false")
-        self.next_action_source.style().unpolish(self.next_action_source)
-        self.next_action_source.style().polish(self.next_action_source)
+        source_kind = self._material_source_visual_kind(source)
+        self._apply_source_pill_kind(self.next_action_source, source_kind, source_missing)
         self.copy_next_source_button.setEnabled(source_available)
         if hasattr(self, "next_haul_title"):
             self.next_haul_title.setText(f"NEXT HAUL: {action_title}")
             self.next_haul_detail.setText(action_detail)
             self.next_haul_source.setText(source)
-            self.next_haul_source.setProperty("missing", "true" if source_missing else "false")
-            self.next_haul_source.style().unpolish(self.next_haul_source)
-            self.next_haul_source.style().polish(self.next_haul_source)
+            self._apply_source_pill_kind(self.next_haul_source, source_kind, source_missing)
             self.copy_haul_source_button.setEnabled(source_available)
 
     def copy_next_action_source(self) -> None:
@@ -1396,7 +1988,7 @@ class ConstructionPanel(QWidget):
 
         if facility is None:
             self.materials_context.setText(
-                f"No focus build selected • Build system: {self.display_system_name()}"
+                f"No build is being tracked • Build system: {self.display_system_name()}"
             )
         else:
             self.materials_context.setText(
@@ -1451,6 +2043,12 @@ class ConstructionPanel(QWidget):
                     left = material.still_needed
                     trips = (left + capacity - 1) // capacity if left else 0
                     source = material.source.strip() if material.source else "Paste Location"
+                    local_source = self._local_market_source(key)
+                    is_local_source = bool(local_source and source == local_source)
+                    auto_external_source = str(self.market_sources.get(key, "") or "").strip()
+                    is_auto_external = bool(
+                        not is_local_source and auto_external_source and source == auto_external_source
+                    )
                     ship_text = f"{material.ship:,}" if self.ship_inventory_known else "Update pending"
                     carrier_text = f"{material.carrier:,}" if carrier_known else "Update pending"
                     values = [
@@ -1478,9 +2076,15 @@ class ConstructionPanel(QWidget):
                         if not editable:
                             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-                        if left > 0 and col in (0, 5, 6):
-                            item.setForeground(QColor("#ffb000"))
-                        elif left == 0:
+                        if left > 0:
+                            # An unfinished depot row stays visually active even
+                            # when the exact shortfall is already on ship/carrier.
+                            # Required vs Delivered is the completion authority.
+                            item.setBackground(QColor("#241D0D"))
+                            item.setForeground(QColor("#E6EDF3"))
+                            if col in (0, 5, 6):
+                                item.setForeground(QColor("#ffb000"))
+                        else:
                             item.setForeground(QColor("#6F7B85"))
                             item.setBackground(QColor("#101A22"))
 
@@ -1489,14 +2093,61 @@ class ConstructionPanel(QWidget):
                         if col == 3 and not self.ship_inventory_known:
                             item.setForeground(QColor("#F59E0B"))
 
+                        source_actionable = material.acquisition_needed > 0
+                        local_actionable = bool(is_local_source and source_actionable)
+                        item.setData(LOCAL_MARKET_SOURCE_ROLE, local_actionable)
+                        if is_local_source:
+                            if source_actionable:
+                                item.setToolTip(
+                                    f"Available locally in {self.focus_system_name()} at {local_source}."
+                                )
+                            else:
+                                item.setToolTip(
+                                    f"Known local source retained: {local_source}. "
+                                    "No additional purchase is needed for this build."
+                                )
+
                         if col == 7:
-                            if self._is_placeholder_source(value):
+                            # Source colours are action cues, not permanent labels.  Once the
+                            # required amount is already on hand or delivered, keep the useful
+                            # station name but let the row fall back to the normal muted styling.
+                            if not source_actionable:
+                                if self._is_placeholder_source(value):
+                                    item.setText("Paste Location")
+                                item.setBackground(QColor("#101A22") if left == 0 else QColor("#241D0D"))
+                                item.setForeground(QColor("#6F7B85") if left == 0 else QColor("#AAB4BE"))
+                                if not self._is_placeholder_source(value):
+                                    item.setToolTip(
+                                        f"Source retained for reference: {value}. "
+                                        "No additional purchase is needed for this build."
+                                    )
+                            elif self._is_placeholder_source(value):
                                 item.setText("Paste Location")
                                 item.setBackground(QColor("#493710"))
                                 item.setForeground(QColor("#F59E0B"))
+                                item.setToolTip(
+                                    "No source is known yet. Visit a commodity market or paste a location."
+                                )
+                            elif is_local_source:
+                                item.setBackground(QColor("#211A2E"))
+                                item.setForeground(QColor("#D8B4FE"))
+                                item.setToolTip(
+                                    f"LOCAL SOURCE • {self.focus_system_name()} • {source}. "
+                                    "Local sources stay preferred even if you later buy elsewhere."
+                                )
+                            elif is_auto_external:
+                                item.setBackground(QColor("#123047"))
+                                item.setForeground(QColor("#BAE6FD"))
+                                item.setToolTip(
+                                    "Last station where this commodity was bought. "
+                                    "This updates automatically on the next purchase unless a local source is known."
+                                )
                             else:
-                                item.setBackground(QColor("#5B21B6"))
-                                item.setForeground(QColor("#FFFFFF"))
+                                item.setBackground(QColor("#27313D"))
+                                item.setForeground(QColor("#E6EDF3"))
+                                item.setToolTip(
+                                    "Manual/legacy source. A local market or a future purchase can replace it."
+                                )
                         self.materials_table.setItem(row, col, item)
         finally:
             self._rendering_materials = False
@@ -1540,7 +2191,7 @@ class ConstructionPanel(QWidget):
                 orbital_total=orbital_total,
                 surface_used=surface_used,
                 surface_total=surface_total,
-                facility=text(5),
+                facility=self._physical_site_facility_text(text(5)),
                 status="Available",
                 confidence="User confirmed" if self.editing else (text(6) or "User entered"),
                 body_id=previous.body_id if previous else 999999,
@@ -1548,23 +2199,32 @@ class ConstructionPanel(QWidget):
                 radius_km=previous.radius_km if previous else None,
                 atmosphere=previous.atmosphere if previous else "",
                 volcanism=previous.volcanism if previous else "",
+                parent_body=previous.parent_body if previous else "",
+                distance_ls=previous.distance_ls if previous else None,
             ))
         return rows
 
     def set_editing(self, enabled: bool) -> None:
         self.editing = enabled
-        self.lock_label.setText("Editing plan" if enabled else "Plan fields locked")
+        self.lock_label.setText("✎ EDITING PLAN" if enabled else "Plan fields locked")
+        self.lock_label.setProperty("editing", "true" if enabled else "false")
+        self.lock_label.style().unpolish(self.lock_label)
+        self.lock_label.style().polish(self.lock_label)
         self.edit_button.setVisible(not enabled)
         self.cancel_button.setVisible(enabled)
         self.save_button.setVisible(enabled)
         for widget in (
             self.primary_combo,
             self.secondary_combo,
+            self.plan_scope_combo,
             self.phase_edit,
             self.primary_port_check,
             self.primary_port_name_edit,
             self.primary_port_location_edit,
             self.concurrent_spin,
+            self.point_calibration_check,
+            self.point_t2_spin,
+            self.point_t3_spin,
         ):
             widget.setEnabled(enabled)
         self.sites_table.setEditTriggers(
@@ -1574,8 +2234,36 @@ class ConstructionPanel(QWidget):
         # Confidence is troubleshooting data. Keep the normal player workflow
         # focused on slots and builds, but reveal it during Edit Plan.
         self.sites_table.setColumnHidden(6, not enabled)
+        if hasattr(self, "goal_editor"):
+            self.goal_editor.setVisible(enabled)
+        if hasattr(self, "advanced_setup_button"):
+            self.advanced_setup_button.setVisible(enabled)
+            self.advanced_setup_button.blockSignals(True)
+            self.advanced_setup_button.setChecked(False)
+            self.advanced_setup_button.blockSignals(False)
+            self.advanced_setup_button.setText("Advanced setup ▸")
         if hasattr(self, "colony_setup_editor"):
-            self.colony_setup_editor.setVisible(enabled)
+            self.colony_setup_editor.setVisible(False)
+        if hasattr(self, "overview_goal_summary"):
+            self.overview_goal_summary.setVisible(not enabled)
+            self.overview_scope_summary.setVisible(not enabled)
+        if hasattr(self, "overview_workflow_hint"):
+            self.overview_workflow_hint.setVisible(not enabled)
+        if hasattr(self, "overview_edit_button"):
+            self.overview_edit_button.setVisible(not enabled)
+        if hasattr(self, "sites_edit_actions"):
+            self.sites_edit_actions.setVisible(enabled)
+        # Editing needs more vertical room than the status dashboard. Hide the
+        # lower recommendation/action cards while the plan form is open so the
+        # goal, scope, site and calibration controls do not get clipped in a
+        # normal (non-maximised) window.
+        if hasattr(self, "overview_next_box"):
+            self.overview_next_box.setVisible(not enabled)
+        if hasattr(self, "overview_action_box"):
+            self.overview_action_box.setVisible(not enabled)
+        if hasattr(self, "overview_grid"):
+            self.overview_grid.setRowStretch(0, 2 if enabled else 1)
+            self.overview_grid.setRowStretch(1, 0 if enabled else 1)
         if hasattr(self, "materials_table"):
             # Material Source stays editable even when the plan is locked,
             # because choosing where to buy commodities is an operational action.
@@ -1586,18 +2274,110 @@ class ConstructionPanel(QWidget):
             self.remove_material_button.setVisible(enabled)
             self.ship_capacity_spin.setEnabled(enabled)
 
+    def _set_advanced_setup_visible(self, visible: bool) -> None:
+        if hasattr(self, "advanced_setup_button"):
+            self.advanced_setup_button.setText("Advanced setup ▾" if visible else "Advanced setup ▸")
+        if hasattr(self, "colony_setup_editor"):
+            self.colony_setup_editor.setVisible(bool(visible and self.editing))
+
+    def add_existing_facility_to_selected_site(self) -> None:
+        """Guided existing-colony entry without requiring exact facility typing."""
+
+        row = self.sites_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Select a body", "Select the body that already contains the facility.")
+            return
+        body_item = self.sites_table.item(row, 0)
+        landable_item = self.sites_table.item(row, 2)
+        if body_item is None:
+            return
+        body = body_item.text().strip()
+        landable = bool(landable_item and landable_item.text().strip().lower() == "yes")
+
+        choices: list[str] = []
+        by_choice: dict[str, FacilityRef] = {}
+        for reference in CATALOG.facilities.values():
+            if reference.id == "primary_port":
+                label = "Orbital/Surface — Primary Port / Genesis"
+            else:
+                if reference.site_type == "surface" and not landable:
+                    continue
+                label = f"{reference.site_type.title()} — {reference.display_name}"
+            choices.append(label)
+            by_choice[label] = reference
+        choices.sort(key=str.casefold)
+        selected, ok = QInputDialog.getItem(
+            self,
+            "Add Existing Facility",
+            f"Completed facility on {body}:",
+            choices,
+            0,
+            True,
+        )
+        if not ok or not str(selected).strip():
+            return
+        selected_text = str(selected).strip()
+        reference = by_choice.get(selected_text)
+        if reference is None:
+            # Editable combo supports fast typing. Resolve either the full label
+            # or a facility/layout name the player typed manually.
+            candidate = selected_text.split(" — ", 1)[-1].strip()
+            reference = CATALOG.facility_from_text(candidate)
+        if reference is None:
+            QMessageBox.information(
+                self,
+                "Facility not recognised",
+                "Choose a facility from the list, or enter the completed build manually in the Builds column.",
+            )
+            return
+        if reference.site_type == "surface" and not landable:
+            QMessageBox.information(self, "Surface facility", f"{reference.display_name} requires a landable body.")
+            return
+
+        facility_item = self.sites_table.item(row, 5)
+        existing_text = facility_item.text().strip() if facility_item else ""
+        physical = self._physical_site_facility_text(existing_text)
+        marker_name = "Primary Port" if reference.id == "primary_port" else reference.display_name
+        marker = f"✓ {marker_name}"
+        existing_fragments = [part.strip() for part in re.split(r"[;\n]+", physical) if part.strip()]
+        if any(CATALOG._normalise(marker_name) in CATALOG._normalise(part) for part in existing_fragments):
+            QMessageBox.information(self, "Already listed", f"{marker_name} is already listed on {body}.")
+            return
+        existing_fragments.append(marker)
+        self.sites_table.setItem(row, 5, QTableWidgetItem("; ".join(existing_fragments)))
+
+        usage_col = 4 if reference.site_type == "surface" else 3
+        usage_item = self.sites_table.item(row, usage_col)
+        used, total = self._parse_usage(usage_item.text() if usage_item else "0/0")
+        used += 1
+        total = max(total, used)
+        self.sites_table.setItem(row, usage_col, QTableWidgetItem(self._usage_text(used, total)))
+
+        if reference.id == "primary_port":
+            self.primary_port_check.setChecked(True)
+            if self.primary_port_name_edit.text().strip() in ("", "Primary Port"):
+                self.primary_port_name_edit.setText("Genesis")
+            location_kind = "Surface" if reference.site_type == "surface" else "Orbit"
+            self.primary_port_location_edit.setText(f"{body} — {location_kind} {used}")
+
+        self.sites_edit_note.setText(f"Added as existing: {marker_name}. Save Changes when finished.")
+
     def cancel_edits(self) -> None:
         self._apply_plan()
         self.set_editing(False)
 
     def save_edits(self) -> None:
         old_goal = self.plan.primary_goal
+        old_secondary = self.plan.secondary_goal
+        old_scope = self.plan.plan_scope
         new_goal = self.primary_combo.currentText()
-        if old_goal != new_goal:
+        new_secondary = self.secondary_combo.currentText()
+        new_scope = self.plan_scope_combo.currentText()
+        if old_goal != new_goal or old_secondary != new_secondary or old_scope != new_scope:
             answer = QMessageBox.question(
                 self,
-                "Change system goal?",
-                "Changing the primary goal regenerates the recommended build queue. Continue?",
+                "Change system goals?",
+                "Changing the goals or plan scope regenerates the recommended build queue. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1605,7 +2385,8 @@ class ConstructionPanel(QWidget):
                 return
 
         self.plan.primary_goal = new_goal
-        self.plan.secondary_goal = self.secondary_combo.currentText()
+        self.plan.secondary_goal = new_secondary
+        self.plan.plan_scope = new_scope
         self.plan.phase = self.phase_edit.text().strip() or "Unknown"
         self.plan.primary_port_complete = self.primary_port_check.isChecked()
         self.plan.primary_port_name = self.primary_port_name_edit.text().strip() or "Primary Port"
@@ -1622,6 +2403,19 @@ class ConstructionPanel(QWidget):
             self._mark_primary_port_on_site()
 
         self._regenerate_facilities()
+        if self.point_calibration_check.isChecked():
+            raw_t2, raw_t3, _t2_ports, _t3_ports = self._construction_state_raw()
+            target_t2 = self.point_t2_spin.value()
+            target_t3 = self.point_t3_spin.value()
+            self.plan.point_balance_calibrated = True
+            self.plan.point_calibration_tier_2 = target_t2
+            self.plan.point_calibration_tier_3 = target_t3
+            self.plan.point_adjust_tier_2 = target_t2 - raw_t2
+            self.plan.point_adjust_tier_3 = target_t3 - raw_t3
+        else:
+            self.plan.point_balance_calibrated = False
+            self.plan.point_adjust_tier_2 = 0
+            self.plan.point_adjust_tier_3 = 0
         self._save_plan()
         self._apply_plan()
 
@@ -1642,18 +2436,45 @@ class ConstructionPanel(QWidget):
     def _apply_plan(self) -> None:
         if not hasattr(self, "primary_combo"):
             return
-        self.primary_combo.setCurrentText(self.plan.primary_goal)
-        self.secondary_combo.setCurrentText(self.plan.secondary_goal)
+        for combo in (self.primary_combo, self.secondary_combo, self.plan_scope_combo):
+            combo.blockSignals(True)
+        try:
+            self.primary_combo.setCurrentText(self.plan.primary_goal)
+            self.secondary_combo.setCurrentText(self.plan.secondary_goal)
+            self.plan_scope_combo.setCurrentText(self.plan.plan_scope)
+        finally:
+            for combo in (self.primary_combo, self.secondary_combo, self.plan_scope_combo):
+                combo.blockSignals(False)
         self.phase_edit.setText(self.plan.phase)
         self.primary_port_check.setChecked(self.plan.primary_port_complete)
         self.primary_port_name_edit.setText(self.plan.primary_port_name)
         self.primary_port_location_edit.setText(self.plan.primary_port_location)
+        raw_t2, raw_t3, _t2_ports, _t3_ports = self._construction_state_raw()
+        current_t2, current_t3, _current_t2_ports, _current_t3_ports = self._construction_state()
+        self.point_calibration_check.setChecked(self.plan.point_balance_calibrated)
+        self.point_t2_spin.setValue(
+            current_t2 if self.plan.point_balance_calibrated else raw_t2
+        )
+        self.point_t3_spin.setValue(
+            current_t3 if self.plan.point_balance_calibrated else raw_t3
+        )
+        if self.plan.point_balance_calibrated:
+            self.point_calibration_note.setText(
+                f"Calibration offset: {self.plan.point_adjust_tier_2:+d} T2, "
+                f"{self.plan.point_adjust_tier_3:+d} T3. Later known builds still change the balance normally."
+            )
+        else:
+            self.point_calibration_note.setText(
+                "Leave calibration off when Observatory matches Elite; enable it only when the in-game T2/T3 counter differs."
+            )
         display_build, display_location = self.focus_build_display()
         self.current_build_value.setText(display_build)
         self.current_location_value.setText(display_location)
         self.concurrent_spin.setValue(self.plan.concurrent_limit)
         if hasattr(self, "ship_capacity_spin"):
+            self.ship_capacity_spin.blockSignals(True)
             self.ship_capacity_spin.setValue(self.plan.ship_capacity_tons or 1168)
+            self.ship_capacity_spin.blockSignals(False)
         self._render_sites()
         self._render_queue()
         self._render_materials()
@@ -1662,7 +2483,11 @@ class ConstructionPanel(QWidget):
 
     def _preview_queue(self, _text: str) -> None:
         if self.editing:
-            self._render_queue(self.primary_combo.currentText())
+            self._render_queue(
+                self.primary_combo.currentText(),
+                self.secondary_combo.currentText(),
+                self.plan_scope_combo.currentText(),
+            )
 
     @staticmethod
     def _looks_like_primary_port_marker(text: str) -> bool:
@@ -1697,13 +2522,849 @@ class ConstructionPanel(QWidget):
                 self.plan.primary_port_location = site.body
             return
 
-    def _regenerate_facilities(self, goal: Optional[str] = None) -> None:
+    @staticmethod
+    def _facility_body_from_location(location: str) -> str:
+        return str(location or "").split(" — ", 1)[0].strip()
+
+    def _queue_display_location(self, location: str) -> str:
+        """Use compact body text in the queue while preserving full data.
+
+        The Build System is already displayed above the table, so a location
+        such as ``Nyeakua GG-D b4-1 A 2 — Surface 2`` can be shown as
+        ``A 2 — Surface 2``.  The full location remains available as a tooltip.
+        """
+        full = str(location or "")
+        system = str(self.system_name or "").strip()
+        prefix = f"{system} " if system and system != "Unknown system" else ""
+        if prefix and full.startswith(prefix):
+            return full[len(prefix):]
+        return full
+
+    @staticmethod
+    def _physical_site_facility_text(text: str) -> str:
+        """Return only facility markers that represent physical/completed sites.
+
+        The Sites table overlays planner-only markers (``•`` planned, ``→`` next,
+        ``⚒`` building) on top of the editable physical-site text.  v3.0.7/3.0.8
+        could accidentally save those overlays back into ``SiteData.facility``
+        when Edit Plan was saved.  That made future planning believe every
+        recommendation already existed.
+        """
+
+        kept: list[str] = []
+        for part in re.split(r"[;\n]+", str(text or "")):
+            cleaned = part.strip()
+            if not cleaned:
+                continue
+            if cleaned.startswith(("•", "→", "⚒")) or "→" in cleaned or "⚒" in cleaned:
+                continue
+            kept.append(cleaned)
+        return "; ".join(kept)
+
+    def _clean_saved_site_facilities(self) -> bool:
+        """Repair persisted planner overlays from v3.0.7/v3.0.8."""
+
+        changed = False
+        for site in self.plan.sites:
+            cleaned = self._physical_site_facility_text(site.facility)
+            if cleaned != site.facility:
+                site.facility = cleaned
+                changed = True
+        return changed
+
+    @staticmethod
+    def _site_facility_fragments(text: str) -> list[str]:
+        """Split saved physical Sites markers into catalog-resolvable facilities."""
+
+        fragments: list[str] = []
+        for part in re.split(r"[;\n]+", str(text or "")):
+            cleaned = part.strip()
+            if not cleaned:
+                continue
+            # Never count planner overlays as physical facilities.  This also
+            # makes old polluted settings harmless before they are saved again.
+            if cleaned.startswith(("•", "→", "⚒")) or "→" in cleaned or "⚒" in cleaned:
+                continue
+            cleaned = re.sub(r"^[✓\s]+", "", cleaned).strip()
+            if cleaned:
+                fragments.append(cleaned)
+        return fragments
+
+    @staticmethod
+    def _descriptor_for_facility_data(facility: FacilityData) -> FacilityDescriptor:
+        reference = CATALOG.facility(facility.facility_id) if facility.facility_id else None
+        if reference is not None:
+            return reference.descriptor
+        return FacilityDescriptor(
+            facility_type=facility.facility_type,
+            category=facility.category,
+            economy=facility.economy,
+            tier=facility.tier,
+            facility_id=facility.facility_id,
+        )
+
+    @staticmethod
+    def _reference_for_facility_data(facility: FacilityData) -> FacilityRef:
+        by_id = CATALOG.facility(facility.facility_id) if facility.facility_id else None
+        by_text = CATALOG.facility_from_text(facility.role)
+
+        # Saved plans can survive several catalog revisions.  If an old row's
+        # id points at a different layout than the human-readable role now
+        # names, trust the role and migrate it to the current catalog entry.
+        # This specifically prevents stale embedded T2/T3 values from turning a
+        # completed Aerecura into a +1 T2 facility after an upgrade.
+        reference = by_id
+        if by_text is not None:
+            if by_id is None:
+                reference = by_text
+            else:
+                role_norm = CATALOG._normalise(facility.role)
+                id_name_norm = CATALOG._normalise(by_id.name)
+                text_name_norm = CATALOG._normalise(by_text.name)
+                if text_name_norm and text_name_norm in role_norm and id_name_norm not in role_norm:
+                    reference = by_text
+        if reference is not None:
+            return reference
+        return FacilityRef(
+            id=facility.facility_id or facility.role,
+            name=facility.role,
+            facility_type=facility.facility_type,
+            category=facility.category,
+            tier=facility.tier,
+            site_type=facility.preferred_site,
+            economy=facility.economy,
+            market_economy=facility.market_economy,
+            construction_tonnage=facility.construction_tonnage,
+            point_cost_mode=facility.point_cost_mode,
+            requires_tier_2=facility.requires_tier_2,
+            requires_tier_3=facility.requires_tier_3,
+            provides_tier_2=facility.provides_tier_2,
+            provides_tier_3=facility.provides_tier_3,
+            confidence=facility.confidence,
+            notes=facility.reason,
+        )
+
+    def _refresh_plan_facility_metadata(self) -> bool:
+        """Migrate saved planner rows onto the current authoritative catalog.
+
+        Construction plans are persistent, while facility rules are now being
+        corrected from current in-game/community data.  Refreshing every known
+        row prevents old serialized cost/reward fields from corrupting the
+        current construction-point balance.  Status/location are preserved.
+        """
+
+        changed = False
+        for facility in self.plan.facilities:
+            reference = self._reference_for_facility_data(facility)
+            if reference.id == (facility.facility_id or facility.role) and CATALOG.facility(reference.id) is None:
+                continue
+            updates = {
+                "facility_id": reference.id,
+                "facility_type": reference.facility_type,
+                "category": reference.category,
+                "tier": reference.tier,
+                "economy": reference.economy,
+                "market_economy": reference.market_economy,
+                "preferred_site": reference.site_type,
+                "construction_tonnage": reference.construction_tonnage,
+                "point_cost_mode": reference.point_cost_mode,
+                "requires_tier_2": reference.requires_tier_2,
+                "requires_tier_3": reference.requires_tier_3,
+                "provides_tier_2": reference.provides_tier_2,
+                "provides_tier_3": reference.provides_tier_3,
+                "confidence": reference.confidence,
+            }
+            for key, value in updates.items():
+                if getattr(facility, key) != value:
+                    setattr(facility, key, value)
+                    changed = True
+            if facility.facility_id != "primary_port" and reference.display_name != facility.role:
+                facility.role = reference.display_name
+                changed = True
+        return changed
+
+    def _completed_facility_descriptors(self) -> list[FacilityDescriptor]:
+        descriptors: list[FacilityDescriptor] = []
+        for facility in self.plan.facilities:
+            if facility.status == "Complete":
+                descriptors.append(self._descriptor_for_facility_data(facility))
+
+        # Sites may contain facilities that were built before Observatory began
+        # tracking the plan.  Classify those by structured type/economy so a
+        # prerequisite is not tied to one exact layout name.
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                descriptor = CATALOG.descriptor_from_text(fragment)
+                if descriptor is not None:
+                    descriptors.append(descriptor)
+        return descriptors
+
+    def _construction_state_raw(self) -> tuple[int, int, int, int]:
+        """Reconstruct points from facilities Observatory can positively identify.
+
+        This is the calculated ledger before any user calibration.  Completed
+        facilities contribute their net historical cost/reward.  A row merely
+        selected as Focus/``Building now`` does *not* spend points until a live
+        construction-depot event proves that Elite actually started the build.
+        """
+
+        tier_2 = 0
+        tier_3 = 0
+        t2_ports = 0
+        t3_ports = 0
+        completed_plan_locations: set[tuple[str, str]] = set()
+
+        for facility in self.plan.facilities:
+            if facility.status == "Building now" and not facility.construction_started:
+                continue
+            if facility.status not in ("Complete", "Building now"):
+                continue
+            reference = self._reference_for_facility_data(facility)
+            cost_t2, cost_t3 = CATALOG.point_cost(
+                reference,
+                previous_t2_ports=t2_ports,
+                previous_t3_ports=t3_ports,
+            )
+            tier_2 -= cost_t2
+            tier_3 -= cost_t3
+            if reference.point_cost_mode == "t2_port":
+                t2_ports += 1
+            elif reference.point_cost_mode == "t3_port":
+                t3_ports += 1
+            if facility.status == "Complete":
+                tier_2 += reference.provides_tier_2
+                tier_3 += reference.provides_tier_3
+                if reference.id:
+                    completed_plan_locations.add(
+                        (self._facility_body_from_location(facility.location), reference.id)
+                    )
+
+        # Facilities recorded in Sites may pre-date Observatory.  Count only
+        # catalog-resolvable completed markers and deduplicate against plan rows.
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is None:
+                    continue
+                if (site.body, reference.id) in completed_plan_locations:
+                    continue
+                cost_t2, cost_t3 = CATALOG.point_cost(
+                    reference,
+                    previous_t2_ports=t2_ports,
+                    previous_t3_ports=t3_ports,
+                )
+                tier_2 += reference.provides_tier_2 - cost_t2
+                tier_3 += reference.provides_tier_3 - cost_t3
+                if reference.point_cost_mode == "t2_port":
+                    t2_ports += 1
+                elif reference.point_cost_mode == "t3_port":
+                    t3_ports += 1
+
+        return max(0, tier_2), max(0, tier_3), t2_ports, t3_ports
+
+    def _construction_state(self) -> tuple[int, int, int, int]:
+        """Return the current point balance used for NEXT-build decisions.
+
+        Elite does not currently expose the system's live T2/T3 counters in the
+        journal events Observatory consumes.  When the calculated historical
+        ledger differs from the counter shown in-game, Edit Plan can calibrate
+        it once.  Observatory stores the *difference* rather than freezing a
+        snapshot, so later known costs/rewards continue moving the balance.
+        """
+
+        tier_2, tier_3, t2_ports, t3_ports = self._construction_state_raw()
+        if self.plan.point_balance_calibrated:
+            tier_2 = max(0, tier_2 + int(self.plan.point_adjust_tier_2 or 0))
+            tier_3 = max(0, tier_3 + int(self.plan.point_adjust_tier_3 or 0))
+        return tier_2, tier_3, t2_ports, t3_ports
+
+    def _construction_point_balance(self) -> tuple[int, int]:
+        tier_2, tier_3, _t2_ports, _t3_ports = self._construction_state()
+        return tier_2, tier_3
+
+    def _prerequisite_satisfied(
+        self,
+        prerequisite: FacilityPrerequisite,
+        descriptors: Optional[list[FacilityDescriptor]] = None,
+    ) -> bool:
+        candidates = descriptors if descriptors is not None else self._completed_facility_descriptors()
+        return any(
+            CATALOG.descriptor_matches_prerequisite(descriptor, prerequisite)
+            for descriptor in candidates
+        )
+
+    def _facility_can_build(
+        self,
+        facility: FacilityData,
+        tier_2: int,
+        tier_3: int,
+        descriptors: list[FacilityDescriptor],
+        t2_ports: int = 0,
+        t3_ports: int = 0,
+    ) -> bool:
+        reference = self._reference_for_facility_data(facility)
+        cost_t2, cost_t3 = CATALOG.point_cost(
+            reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+        )
+        if cost_t2 > tier_2 or cost_t3 > tier_3:
+            return False
+        return all(
+            self._prerequisite_satisfied(prerequisite, descriptors)
+            for prerequisite in reference.prerequisites
+        )
+
+    def _facility_block_reason(self, facility: FacilityData) -> str:
+        """Explain why a queued facility cannot be started *right now*.
+
+        This deliberately uses the live/calibrated current point balance rather
+        than the future simulated balance used to order the rest of the queue.
+        A later row can therefore become NEXT when an earlier goal row is legal
+        only after that bridge facility finishes.
+        """
+
+        tier_2, tier_3, t2_ports, t3_ports = self._construction_state()
+        descriptors = self._completed_facility_descriptors()
+        reference = self._reference_for_facility_data(facility)
+        short_t2, short_t3 = CATALOG.point_shortfall(
+            reference,
+            tier_2,
+            tier_3,
+            previous_t2_ports=t2_ports,
+            previous_t3_ports=t3_ports,
+        )
+        shortages: list[str] = []
+        if short_t2:
+            shortages.append(f"{short_t2} T2")
+        if short_t3:
+            shortages.append(f"{short_t3} T3")
+        if shortages:
+            return (
+                f"Needs {' and '.join(shortages)} more construction points "
+                f"(current: {tier_2} T2, {tier_3} T3)."
+            )
+
+        missing = [
+            prerequisite.display_name
+            for prerequisite in reference.prerequisites
+            if not self._prerequisite_satisfied(prerequisite, descriptors)
+        ]
+        if missing:
+            return f"Missing prerequisite: {', '.join(missing)}."
+
+        if facility.preferred_site == "surface" and not self._location_is_real(facility.location):
+            return "No compatible surface slot is currently assigned."
+        if facility.preferred_site == "orbital" and not self._location_is_real(facility.location):
+            return "No compatible orbital slot is currently assigned."
+        return ""
+
+    def _next_buildable_facility(self) -> Optional[FacilityData]:
+        """Return the first queued facility Elite should allow us to start now."""
+
+        for facility in self.plan.facilities:
+            if facility.status != "Queued":
+                continue
+            if not self._facility_block_reason(facility):
+                return facility
+        return None
+
+    def _apply_facility_points(
+        self,
+        facility: FacilityData,
+        tier_2: int,
+        tier_3: int,
+        t2_ports: int = 0,
+        t3_ports: int = 0,
+    ) -> tuple[int, int, int, int]:
+        reference = self._reference_for_facility_data(facility)
+        cost_t2, cost_t3 = CATALOG.point_cost(
+            reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+        )
+        tier_2 = max(0, tier_2 - cost_t2 + reference.provides_tier_2)
+        tier_3 = max(0, tier_3 - cost_t3 + reference.provides_tier_3)
+        if reference.point_cost_mode == "t2_port":
+            t2_ports += 1
+        elif reference.point_cost_mode == "t3_port":
+            t3_ports += 1
+        return tier_2, tier_3, t2_ports, t3_ports
+
+    def _repair_impossible_building_focus(self) -> bool:
+        """Demote stale planner focus rows whose prerequisites do not exist.
+
+        A ``Building now`` row is a player-selected Observatory focus, not proof
+        that Elite actually allowed construction to start.  This matters when
+        facility rules are corrected after a plan was already saved: an old
+        focus such as Tartarus may remain pinned even though the system has no
+        completed Extraction settlement.  Elite cannot have legitimately
+        started that hub in that state, so return it to the queue and clear the
+        stale global focus record.
+
+        Construction-point affordability is intentionally *not* used here.  A
+        legitimate in-progress build has already spent its point cost, so its
+        current balance can be lower than the amount originally required.
+        """
+
+        descriptors = self._completed_facility_descriptors()
+        changed = False
+        for facility in self.plan.facilities:
+            if facility.status != "Building now":
+                continue
+            reference = self._reference_for_facility_data(facility)
+            if not reference.prerequisites:
+                continue
+            if all(
+                self._prerequisite_satisfied(prerequisite, descriptors)
+                for prerequisite in reference.prerequisites
+            ):
+                continue
+
+            facility.status = "Queued"
+            if (
+                self.plan.current_build == facility.role
+                and self.plan.current_location == facility.location
+            ):
+                self.plan.current_build = "Not selected"
+                self.plan.current_location = "Not selected"
+            active_focus_id = str(self.active_focus.get("facility_id", "") or "")
+            active_focus_system = str(self.active_focus.get("system_name", "") or "")
+            if (
+                self._is_active_focus_facility(facility)
+                or (
+                    active_focus_id
+                    and active_focus_id == facility.facility_id
+                    and (not active_focus_system or active_focus_system == self.system_name)
+                )
+            ):
+                self.active_focus = {}
+                self.settings.remove("construction/active_focus")
+                self._schedule_settings_sync()
+            changed = True
+        return changed
+
+    def _simulated_state_before(self, index: int) -> tuple[int, int, int, int, list[FacilityDescriptor]]:
+        """Project points/descriptors after buildable rows before ``index`` finish.
+
+        Prerequisite selection must use the state that will exist when the
+        dependant is reached, not only the points available this second.  This
+        is what lets an early T1 orbital installation generate a T2 point and
+        then makes a large +2-T3 settlement the better prerequisite choice.
+        """
+
+        tier_2, tier_3, t2_ports, t3_ports = self._construction_state()
+        descriptors = self._completed_facility_descriptors()
+        for facility in self.plan.facilities:
+            if facility.status == "Building now":
+                reference = self._reference_for_facility_data(facility)
+                if facility.construction_started:
+                    # Cost is already reflected in the current balance; only the
+                    # completion reward remains in the future simulation.
+                    tier_2 += reference.provides_tier_2
+                    tier_3 += reference.provides_tier_3
+                    descriptors.append(self._descriptor_for_facility_data(facility))
+                elif self._facility_can_build(
+                    facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
+                ):
+                    # Focus selected but Elite has not started the site yet.
+                    tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                        facility, tier_2, tier_3, t2_ports, t3_ports
+                    )
+                    descriptors.append(self._descriptor_for_facility_data(facility))
+
+        for facility in self.plan.facilities[:max(0, index)]:
+            if facility.status != "Queued":
+                continue
+            if not self._facility_can_build(
+                facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
+            ):
+                continue
+            tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                facility, tier_2, tier_3, t2_ports, t3_ports
+            )
+            descriptors.append(self._descriptor_for_facility_data(facility))
+        return tier_2, tier_3, t2_ports, t3_ports, descriptors
+
+    def _ensure_prerequisite_rows(self) -> bool:
+        """Insert/move generic prerequisite facilities ahead of dependants.
+
+        Example: Tartarus requires ``Settlement - Extraction``.  The resolver
+        searches for *any* matching Settlement/Extraction facility already in
+        the plan/system.  If none exists, it picks the best matching facility
+        that the current T2/T3 balance can build, rather than hard-coding one
+        settlement name.
+        """
+
+        changed = False
+        # Multiple passes allow a newly inserted prerequisite to have its own
+        # prerequisite without turning the resolver into name-specific code.
+        for _pass in range(8):
+            pass_changed = False
+            index = 0
+            while index < len(self.plan.facilities):
+                facility = self.plan.facilities[index]
+                reference = self._reference_for_facility_data(facility)
+                if not reference.prerequisites:
+                    index += 1
+                    continue
+
+                for prerequisite in reference.prerequisites:
+                    if self._prerequisite_satisfied(prerequisite):
+                        continue
+
+                    matching_index: Optional[int] = None
+                    for candidate_index, candidate in enumerate(self.plan.facilities):
+                        if candidate is facility or candidate.status == "Skipped":
+                            continue
+                        descriptor = self._descriptor_for_facility_data(candidate)
+                        if CATALOG.descriptor_matches_prerequisite(descriptor, prerequisite):
+                            matching_index = candidate_index
+                            break
+
+                    if matching_index is not None:
+                        if matching_index > index:
+                            candidate = self.plan.facilities.pop(matching_index)
+                            self.plan.facilities.insert(index, candidate)
+                            pass_changed = True
+                            changed = True
+                            index += 1
+                        continue
+
+                    future_t2, future_t3, _future_t2_ports, _future_t3_ports, _future_desc = (
+                        self._simulated_state_before(index)
+                    )
+                    candidate_ref = CATALOG.best_prerequisite_candidate(
+                        prerequisite,
+                        available_tier_2=future_t2,
+                        available_tier_3=future_t3,
+                    )
+                    if candidate_ref is None:
+                        continue
+
+                    candidate = FacilityData.from_reference(
+                        candidate_ref,
+                        (
+                            f"Prerequisite for {facility.role}: requires "
+                            f"{prerequisite.display_name}. Any facility matching "
+                            "that type/category and economy can satisfy it."
+                        ),
+                    )
+                    self.plan.facilities.insert(index, candidate)
+                    pass_changed = True
+                    changed = True
+                    index += 1
+
+                index += 1
+
+            if not pass_changed:
+                break
+        return changed
+
+    def _physical_facility_references(self) -> list[FacilityRef]:
+        """Known built/in-progress facilities, including pre-Observatory sites.
+
+        Site markers are treated as completed existing facilities.  Complete and
+        Building-now queue rows are also physical, but are deduplicated against
+        the same exact facility recorded on the same body in Sites.
+        """
+
+        refs: list[FacilityRef] = []
+        seen: set[tuple[str, str]] = set()
+        for facility in self.plan.facilities:
+            if facility.status not in ("Complete", "Building now"):
+                continue
+            reference = self._reference_for_facility_data(facility)
+            body = self._facility_body_from_location(facility.location)
+            key = (body, reference.id)
+            if key in seen:
+                continue
+            refs.append(reference)
+            seen.add(key)
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is None:
+                    continue
+                key = (site.body, reference.id)
+                if key in seen:
+                    continue
+                refs.append(reference)
+                seen.add(key)
+        return refs
+
+    def _existing_functional_counts(self) -> dict[tuple[str, str, int, str, str], int]:
+        counts: dict[tuple[str, str, int, str, str], int] = {}
+        for reference in self._physical_facility_references():
+            if reference.id == "primary_port":
+                continue
+            signature = CATALOG.functional_signature(reference)
+            counts[signature] = counts.get(signature, 0) + 1
+        return counts
+
+    def _known_facility_signatures(self) -> set[tuple[str, str, int, str, str]]:
+        signatures = {
+            CATALOG.functional_signature(reference)
+            for reference in self._physical_facility_references()
+            if reference.id != "primary_port"
+        }
+        for facility in self.plan.facilities:
+            if facility.status == "Skipped":
+                continue
+            reference = self._reference_for_facility_data(facility)
+            if reference.id != "primary_port":
+                signatures.add(CATALOG.functional_signature(reference))
+        return signatures
+
+    def _site_type_can_accept_more(self, site_type: str) -> bool:
+        # If the player has not entered/confirmed any slot totals yet, do not
+        # pretend there is no capacity.  Once totals are known, respect them.
+        totals_known = any(
+            site.surface_total > 0 or site.orbital_total > 0
+            for site in self.plan.sites
+        )
+        if not totals_known:
+            return True
+        if site_type == "surface":
+            return any(
+                site.landable and site.surface_used < site.surface_total
+                for site in self.plan.sites
+            )
+        if site_type == "orbital":
+            return any(site.orbital_used < site.orbital_total for site in self.plan.sites)
+        return False
+
+    def _best_point_bridge_candidate(
+        self,
+        remaining: list[FacilityData],
+        tier_2: int,
+        tier_3: int,
+        descriptors: list[FacilityDescriptor],
+        t2_ports: int,
+        t3_ports: int,
+        excluded_signatures: set[tuple[str, str, int, str, str]],
+    ) -> FacilityRef | None:
+        """Find one mechanically buildable facility that unlocks point progress.
+
+        A goal recipe can legitimately ask for more T2/T3 than its named rows
+        generate.  Rather than leaving a blocked facility labelled NEXT, insert
+        a bridge facility that is buildable now and produces the missing point
+        tier.  Economy alignment with the primary goal is weighted most heavily;
+        the secondary goal then breaks otherwise similar choices.
+        """
+
+        needed_t2 = 0
+        needed_t3 = 0
+        for facility in remaining:
+            reference = self._reference_for_facility_data(facility)
+            if not all(
+                self._prerequisite_satisfied(prerequisite, descriptors)
+                for prerequisite in reference.prerequisites
+            ):
+                continue
+            cost_t2, cost_t3 = CATALOG.point_cost(
+                reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+            )
+            needed_t2 = max(0, cost_t2 - tier_2)
+            needed_t3 = max(0, cost_t3 - tier_3)
+            if needed_t2 or needed_t3:
+                break
+        if not needed_t2 and not needed_t3:
+            return None
+
+        primary_goal, secondary_goal = self._effective_goal_names()
+        economy_weights = CATALOG.goal_economy_weights(primary_goal, secondary_goal)
+
+        def buildable(reference: FacilityRef) -> bool:
+            if reference.id == "primary_port":
+                return False
+            if CATALOG.functional_signature(reference) in excluded_signatures:
+                return False
+            if not self._site_type_can_accept_more(reference.site_type):
+                return False
+            cost_t2, cost_t3 = CATALOG.point_cost(
+                reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+            )
+            if cost_t2 > tier_2 or cost_t3 > tier_3:
+                return False
+            return all(
+                self._prerequisite_satisfied(prerequisite, descriptors)
+                for prerequisite in reference.prerequisites
+            )
+
+        candidates = [
+            reference
+            for reference in CATALOG.facilities.values()
+            if buildable(reference)
+            and (reference.provides_tier_2 > 0 or reference.provides_tier_3 > 0)
+        ]
+        if not candidates:
+            return None
+
+        # Prefer the point tier directly blocking the next prerequisite-satisfied
+        # goal row.  If no direct provider is currently buildable (for example
+        # we need T3 but have no T2 to pay for a T3-producing settlement), a T2
+        # generator becomes the bridge to the bridge.
+        direct = [
+            reference
+            for reference in candidates
+            if (needed_t2 and reference.provides_tier_2 > 0)
+            or (needed_t3 and reference.provides_tier_3 > 0)
+        ]
+        pool = direct or candidates
+
+        def sort_key(reference: FacilityRef) -> tuple[int, int, int, int, int, int, str]:
+            economy = CATALOG._normalise(reference.market_economy or reference.economy)
+            affinity = economy_weights.get(economy, 0)
+            direct_reward = (
+                (reference.provides_tier_2 if needed_t2 else 0)
+                + (reference.provides_tier_3 if needed_t3 else 0)
+            )
+            total_reward = reference.provides_tier_2 + reference.provides_tier_3
+            cost_t2, cost_t3 = CATALOG.point_cost(
+                reference, previous_t2_ports=t2_ports, previous_t3_ports=t3_ports
+            )
+            tonnage = reference.construction_tonnage or 10**9
+            return (
+                -affinity,
+                -direct_reward,
+                -total_reward,
+                cost_t2 + cost_t3,
+                tonnage,
+                reference.preferred_rank,
+                reference.display_name.casefold(),
+            )
+
+        return sorted(pool, key=sort_key)[0]
+
+    def _reorder_facilities_for_buildability(self) -> bool:
+        """Turn both goal recipes into a dependency/point-feasible build order."""
+
+        original = list(self.plan.facilities)
+        completed = [facility for facility in original if facility.status == "Complete"]
+        building = [facility for facility in original if facility.status == "Building now"]
+        queued = [facility for facility in original if facility.status == "Queued"]
+        skipped = [facility for facility in original if facility.status == "Skipped"]
+        other = [
+            facility
+            for facility in original
+            if facility.status not in ("Complete", "Building now", "Queued", "Skipped")
+        ]
+
+        tier_2, tier_3, t2_ports, t3_ports = self._construction_state()
+        descriptors = self._completed_facility_descriptors()
+        ordered: list[FacilityData] = completed + building
+
+        # A depot-confirmed active build has already spent its point cost, so only
+        # its completion reward remains.  A Focus row with no depot proof is still
+        # only planning intent and must be able to pay the full cost in simulation.
+        for facility in building:
+            reference = self._reference_for_facility_data(facility)
+            if facility.construction_started:
+                tier_2 += reference.provides_tier_2
+                tier_3 += reference.provides_tier_3
+                descriptors.append(self._descriptor_for_facility_data(facility))
+            elif self._facility_can_build(
+                facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
+            ):
+                tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                    facility, tier_2, tier_3, t2_ports, t3_ports
+                )
+                descriptors.append(self._descriptor_for_facility_data(facility))
+
+        remaining = list(queued)
+        while remaining:
+            choice: Optional[FacilityData] = None
+            for facility in remaining:
+                if self._facility_can_build(
+                    facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
+                ):
+                    choice = facility
+                    break
+            if choice is None:
+                excluded_signatures = self._known_facility_signatures()
+                excluded_signatures.update(
+                    CATALOG.functional_signature(self._reference_for_facility_data(facility))
+                    for facility in ordered
+                    if self._reference_for_facility_data(facility).id != "primary_port"
+                )
+                bridge_ref = self._best_point_bridge_candidate(
+                    remaining,
+                    tier_2,
+                    tier_3,
+                    descriptors,
+                    t2_ports,
+                    t3_ports,
+                    excluded_signatures,
+                )
+                if bridge_ref is None:
+                    ordered.extend(remaining)
+                    break
+                bridge_primary, bridge_secondary = self._effective_goal_names()
+                bridge = FacilityData.from_reference(
+                    bridge_ref,
+                    (
+                        "Construction-point bridge chosen to keep the combined "
+                        f"{bridge_primary} / {bridge_secondary} plan buildable."
+                    ),
+                )
+                ordered.append(bridge)
+                tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                    bridge, tier_2, tier_3, t2_ports, t3_ports
+                )
+                descriptors.append(self._descriptor_for_facility_data(bridge))
+                # The bridge now exists in the future simulated system.  Continue
+                # until a real goal row becomes buildable or another bridge is needed.
+                continue
+            ordered.append(choice)
+            remaining.remove(choice)
+            tier_2, tier_3, t2_ports, t3_ports = self._apply_facility_points(
+                choice, tier_2, tier_3, t2_ports, t3_ports
+            )
+            descriptors.append(self._descriptor_for_facility_data(choice))
+
+        ordered.extend(other)
+        ordered.extend(skipped)
+        if ordered == original:
+            return False
+        self.plan.facilities = ordered
+        return True
+
+    def _regenerate_facilities(
+        self,
+        goal: Optional[str] = None,
+        secondary_goal: Optional[str] = None,
+        plan_scope: Optional[str] = None,
+    ) -> None:
         goal = goal or self.plan.primary_goal
-        old_by_id = {facility.facility_id: facility for facility in self.plan.facilities if facility.facility_id}
+        secondary_goal = (
+            self.plan.secondary_goal if secondary_goal is None else secondary_goal
+        )
+        plan_scope = plan_scope or self.plan.plan_scope
+        old_by_id = {
+            facility.facility_id: facility
+            for facility in self.plan.facilities
+            if facility.facility_id
+        }
         old_by_role = {facility.role: facility for facility in self.plan.facilities}
         generated: list[FacilityData] = []
+        existing_counts = self._existing_functional_counts()
 
-        for facility_ref, reason in CATALOG.goal_steps(goal):
+        # Scope controls how far Observatory plans, not how many rows it is allowed
+        # to return.  Primary-only stops after the primary objective.  The normal
+        # dual-goal scope includes both dropdowns. Goal-Directed Expansion adds
+        # only strongly related supporting capabilities; Full System Build-Out
+        # remains available when the commander intentionally wants broad coverage.
+        effective_secondary = secondary_goal
+        if plan_scope == "Primary Goal Only":
+            effective_secondary = "None"
+
+        # Primary and secondary objectives are merged before dependency solving.
+        # A mechanically equivalent layout already present in the system consumes
+        # one requested goal slot.  Example: an existing Opis satisfies one
+        # Industrial Planetary Outpost request that otherwise names Hephaestus.
+        for facility_ref, reason in CATALOG.combined_goal_steps(goal, effective_secondary):
+            if facility_ref.id != "primary_port":
+                signature = CATALOG.functional_signature(facility_ref)
+                if existing_counts.get(signature, 0) > 0:
+                    existing_counts[signature] -= 1
+                    continue
             previous = old_by_id.get(facility_ref.id) or old_by_role.get(facility_ref.display_name)
             facility = FacilityData.from_reference(facility_ref, reason)
             if previous:
@@ -1715,57 +3376,507 @@ class ConstructionPanel(QWidget):
                 facility.role = self.plan.primary_port_name or facility.role
             generated.append(facility)
 
+        # Preserve things that already physically exist or are genuinely under
+        # construction even when they are not part of the newly selected goals.
+        generated_ids = {facility.facility_id for facility in generated if facility.facility_id}
+        for previous in self.plan.facilities:
+            if previous.facility_id in generated_ids:
+                continue
+            if previous.status in ("Complete", "Building now"):
+                generated.append(previous)
+
+        if plan_scope in ("Goal-Directed Expansion", "Full System Build-Out"):
+            self._append_system_buildout_rows(
+                generated, goal, effective_secondary, old_by_id, old_by_role,
+                full_buildout=(plan_scope == "Full System Build-Out"),
+            )
+
         self.plan.facilities = generated
+        self._repair_impossible_building_focus()
+        self._ensure_prerequisite_rows()
+        self._reorder_facilities_for_buildability()
         self._assign_recommended_locations()
 
-    def _free_location(self, preferred: str) -> str:
-        candidates = self.plan.sites
-        if preferred == "surface":
-            for site in candidates:
-                if site.landable and site.surface_used < site.surface_total:
-                    return f"{site.body} — Surface {site.surface_used + 1}"
-            for site in candidates:
-                if site.orbital_used < site.orbital_total:
-                    return f"{site.body} — Orbit {site.orbital_used + 1}"
+    def _append_system_buildout_rows(
+        self,
+        generated: list[FacilityData],
+        primary_goal: str,
+        secondary_goal: str,
+        old_by_id: dict[str, FacilityData],
+        old_by_role: dict[str, FacilityData],
+        *,
+        full_buildout: bool = False,
+    ) -> None:
+        """Extend selected goals with useful post-goal development.
+
+        Goal-Directed Expansion adds only enough of the highest-value supporting
+        stages to give the system the capabilities it needs. Full System Build-Out
+        remains available for commanders who deliberately want broad category
+        coverage. Neither mode uses a fixed facility-count ceiling.
+        """
+
+        known_refs = list(self._physical_facility_references())
+        known_signatures = {
+            CATALOG.functional_signature(reference)
+            for reference in known_refs
+            if reference.id != "primary_port"
+        }
+        for facility in generated:
+            reference = self._reference_for_facility_data(facility)
+            if reference.id == "primary_port":
+                continue
+            known_refs.append(reference)
+            known_signatures.add(CATALOG.functional_signature(reference))
+
+        totals_known = any(
+            site.surface_total > 0 or site.orbital_total > 0
+            for site in self.plan.sites
+        )
+        surface_remaining: Optional[int] = None
+        orbital_remaining: Optional[int] = None
+        if totals_known:
+            surface_remaining = sum(
+                max(0, site.surface_total - site.surface_used)
+                for site in self.plan.sites
+                if site.landable
+            )
+            orbital_remaining = sum(
+                max(0, site.orbital_total - site.orbital_used)
+                for site in self.plan.sites
+            )
+            # Goal rows already queued by this regeneration consume future slots.
+            for facility in generated:
+                if facility.status in ("Complete", "Building now"):
+                    continue
+                if facility.preferred_site == "surface" and surface_remaining is not None:
+                    surface_remaining = max(0, surface_remaining - 1)
+                elif facility.preferred_site == "orbital" and orbital_remaining is not None:
+                    orbital_remaining = max(0, orbital_remaining - 1)
+
+        stages = (
+            CATALOG.ordered_buildout_stages(primary_goal, secondary_goal, known_refs)
+            if full_buildout
+            else CATALOG.targeted_buildout_stages(primary_goal, secondary_goal, known_refs)
+        )
+        for stage in stages:
+            stage_name = str(stage.get("name", "System Development"))
+            description = str(stage.get("description", "")).strip()
+            before_total = int(stage.get("total", 0) or 0)
+            if full_buildout:
+                before_satisfied = int(stage.get("satisfied", 0) or 0)
+                target_total = before_total
+                stage_references = CATALOG.stage_facilities(stage)
+            else:
+                before_satisfied = int(stage.get("target_satisfied", 0) or 0)
+                target_total = int(stage.get("target_count", 0) or 0)
+                stage_references = CATALOG.stage_target_facilities(stage)
+            needed_for_stage = max(0, target_total - before_satisfied)
+            if needed_for_stage <= 0:
+                continue
+            for reference in stage_references:
+                signature = CATALOG.functional_signature(reference)
+                if signature in known_signatures:
+                    continue
+                if reference.site_type == "surface" and surface_remaining is not None:
+                    if surface_remaining <= 0:
+                        continue
+                if reference.site_type == "orbital" and orbital_remaining is not None:
+                    if orbital_remaining <= 0:
+                        continue
+
+                reason = (
+                    f"{'Full build-out' if full_buildout else 'Goal-directed expansion'} — {stage_name}: "
+                    f"{before_satisfied}/{target_total if not full_buildout else before_total} target functions already present. "
+                    f"{description}"
+                ).strip()
+                previous = old_by_id.get(reference.id) or old_by_role.get(reference.display_name)
+                facility = FacilityData.from_reference(reference, reason)
+                if previous and previous.status not in ("Skipped",):
+                    facility.status = previous.status
+                    facility.location = previous.location
+                generated.append(facility)
+                known_refs.append(reference)
+                known_signatures.add(signature)
+                if reference.site_type == "surface" and surface_remaining is not None:
+                    surface_remaining -= 1
+                elif reference.site_type == "orbital" and orbital_remaining is not None:
+                    orbital_remaining -= 1
+
+                # Update the stage progress embedded in subsequent explanations.
+                before_satisfied = min(before_total, before_satisfied + 1)
+                needed_for_stage -= 1
+                if needed_for_stage <= 0:
+                    break
+
+    @staticmethod
+    def _is_port_reference(reference: FacilityRef) -> bool:
+        return CATALOG.is_port(reference)
+
+    @staticmethod
+    def _location_is_real(location: str) -> bool:
+        text = str(location or "")
+        return " — Surface " in text or " — Orbit " in text
+
+    def _primary_port_body(self) -> str:
+        location = str(self.plan.primary_port_location or "")
+        if not self._location_is_real(location):
+            return ""
+        return self._facility_body_from_location(location)
+
+    def _effective_goal_names(self) -> tuple[str, str]:
+        if self.editing and hasattr(self, "primary_combo") and hasattr(self, "secondary_combo"):
+            return self.primary_combo.currentText(), self.secondary_combo.currentText()
+        return self.plan.primary_goal, self.plan.secondary_goal
+
+    def _effective_plan_scope(self) -> str:
+        if self.editing and hasattr(self, "plan_scope_combo"):
+            return self.plan_scope_combo.currentText()
+        return self.plan.plan_scope
+
+    def _completed_physical_references(self) -> list[FacilityRef]:
+        """Facilities that are actually complete, including pre-Observatory sites."""
+
+        refs: list[FacilityRef] = []
+        seen: set[tuple[str, str]] = set()
+        for facility in self.plan.facilities:
+            if facility.status != "Complete":
+                continue
+            reference = self._reference_for_facility_data(facility)
+            body = self._facility_body_from_location(facility.location)
+            key = (body, reference.id)
+            if key in seen:
+                continue
+            refs.append(reference)
+            seen.add(key)
+        for site in self.plan.sites:
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is None:
+                    continue
+                key = (site.body, reference.id)
+                if key in seen:
+                    continue
+                refs.append(reference)
+                seen.add(key)
+        return refs
+
+    def _building_references(self) -> list[FacilityRef]:
+        return [
+            self._reference_for_facility_data(facility)
+            for facility in self.plan.facilities
+            if facility.status == "Building now"
+        ]
+
+    def goal_progress(self, goal_name: str) -> dict[str, Any]:
+        return CATALOG.goal_progress(
+            goal_name,
+            self._completed_physical_references(),
+            primary_port_complete=self.plan.primary_port_complete,
+            active_facilities=self._building_references(),
+        )
+
+    def selected_goal_progress(
+        self,
+        primary_goal: Optional[str] = None,
+        secondary_goal: Optional[str] = None,
+    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
+        primary_goal = primary_goal or self.plan.primary_goal
+        secondary_goal = self.plan.secondary_goal if secondary_goal is None else secondary_goal
+        primary = self.goal_progress(primary_goal)
+        mapped_secondary = CATALOG.mapped_secondary_goal(secondary_goal)
+        secondary = self.goal_progress(mapped_secondary) if mapped_secondary else None
+        return primary, secondary
+
+    @staticmethod
+    def _progress_label(progress: Optional[dict[str, Any]]) -> str:
+        if progress is None:
+            return "Not selected"
+        total = int(progress.get("total", 0) or 0)
+        satisfied = int(progress.get("satisfied", 0) or 0)
+        status = str(progress.get("status", "Not started"))
+        if total:
+            return f"{status} — {satisfied}/{total} requirements"
+        return status
+
+    def current_development_phase(
+        self,
+        primary_goal: Optional[str] = None,
+        secondary_goal: Optional[str] = None,
+        plan_scope: Optional[str] = None,
+    ) -> str:
+        primary_goal = primary_goal or self.plan.primary_goal
+        secondary_goal = self.plan.secondary_goal if secondary_goal is None else secondary_goal
+        plan_scope = plan_scope or self._effective_plan_scope()
+        primary, secondary = self.selected_goal_progress(primary_goal, secondary_goal)
+        if primary.get("status") != "Complete":
+            return "Selected goals — primary incomplete"
+        if plan_scope != "Primary Goal Only" and secondary is not None and secondary.get("status") != "Complete":
+            return "Selected goals — secondary incomplete"
+        if plan_scope in ("Primary Goal Only", "Primary + Secondary Goals"):
+            return "Selected goals complete — ready to move on"
+
+        known = self._completed_physical_references()
+        if plan_scope == "Goal-Directed Expansion":
+            ranked = CATALOG.targeted_buildout_stages(primary_goal, secondary_goal, known)
+            if not ranked:
+                return "Goal-directed expansion complete — system has the selected capabilities"
+            return f"Goal-Directed Expansion — next capability: {ranked[0].get('name', 'System Development')}"
+
+        ranked = CATALOG.ordered_buildout_stages(primary_goal, secondary_goal, known)
+        next_stage = next((stage for stage in ranked if stage.get("status") != "Complete"), None)
+        if next_stage is None:
+            return "Full system build-out complete"
+        return f"Full System Build-Out — next stage: {next_stage.get('name', 'System Development')}"
+
+    def _related_bodies_for_facility(self, facility: FacilityData) -> set[str]:
+        """Bodies already hosting a direct prerequisite/dependant.
+
+        Placing dependency chains on one body is especially useful after Update
+        3 because a port and supporting facilities on/around the same body form
+        strong market links.  This is a placement preference, never a fabricated
+        construction prerequisite.
+        """
+
+        related: set[str] = set()
+        reference = self._reference_for_facility_data(facility)
+        descriptor = self._descriptor_for_facility_data(facility)
+        for other in self.plan.facilities:
+            if other is facility or not self._location_is_real(other.location):
+                continue
+            other_ref = self._reference_for_facility_data(other)
+            body = self._facility_body_from_location(other.location)
+            if not body:
+                continue
+            if any(
+                CATALOG.descriptor_matches_prerequisite(
+                    self._descriptor_for_facility_data(other), prerequisite
+                )
+                for prerequisite in reference.prerequisites
+            ):
+                related.add(body)
+            if any(
+                CATALOG.descriptor_matches_prerequisite(descriptor, prerequisite)
+                for prerequisite in other_ref.prerequisites
+            ):
+                related.add(body)
+        return related
+
+    def _body_facility_references(self, body: str) -> list[FacilityRef]:
+        refs: list[FacilityRef] = []
+        seen: set[str] = set()
+        for facility in self.plan.facilities:
+            if not self._location_is_real(facility.location):
+                continue
+            if self._facility_body_from_location(facility.location) != body:
+                continue
+            reference = self._reference_for_facility_data(facility)
+            if reference.id not in seen:
+                refs.append(reference)
+                seen.add(reference.id)
+        for site in self.plan.sites:
+            if site.body != body:
+                continue
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is not None and reference.id not in seen:
+                    refs.append(reference)
+                    seen.add(reference.id)
+        return refs
+
+    def _site_parent_name(self, site: SiteData) -> str:
+        """Return the direct parent body when journal data (or naming) provides it."""
+
+        if site.parent_body:
+            return site.parent_body
+        tokens = site.body.rsplit(" ", 1)
+        if len(tokens) == 2 and tokens[1].islower() and tokens[1].isalpha():
+            return tokens[0]
+        return ""
+
+    def _planet_moon_neighbor(self, first_body: str, second_body: str) -> bool:
+        """True only for a direct parent/child planet-moon relationship.
+
+        This is a travel-convenience tie breaker.  It must never be treated as a
+        Strong Market Link: Frontier's strong-link rule still requires the port
+        and supporting facility to be on/orbiting the same body.
+        """
+
+        if not first_body or not second_body or first_body == second_body:
+            return False
+        first = next((site for site in self.plan.sites if site.body == first_body), None)
+        second = next((site for site in self.plan.sites if site.body == second_body), None)
+        if first is None or second is None:
+            return False
+        return (
+            self._site_parent_name(first) == second.body
+            or self._site_parent_name(second) == first.body
+        )
+
+    @staticmethod
+    def _body_economy_affinity(site: SiteData, economy: str) -> int:
+        """Small placement bonus from Update-3 body/economy interactions.
+
+        This deliberately uses only body facts Observatory actually has.  It
+        does not guess journal-missing organics/geologicals/resource richness.
+        """
+
+        economy = CATALOG._normalise(economy)
+        body_type = CATALOG._normalise(site.body_type)
+        volcanism = CATALOG._normalise(site.volcanism)
+        score = 0
+        if economy == "extraction":
+            if volcanism and volcanism not in {"none", "no volcanism"}:
+                score += 90
+            if "high metal content" in body_type or "metal rich" in body_type:
+                score += 55
+        elif economy in {"industrial", "refinery"}:
+            if "gas giant" in body_type or "rocky ice" in body_type:
+                score += 45
+            if economy == "refinery" and "rocky" in body_type:
+                score += 35
+            if economy == "industrial" and "icy" in body_type:
+                score += 25
+        elif economy == "agriculture":
+            if "earth like" in body_type or "water world" in body_type:
+                score += 70
+            if "icy" in body_type:
+                score -= 45
+        elif economy in {"high tech", "research bio", "scientific"}:
+            if "earth like" in body_type or "ammonia" in body_type or "gas giant" in body_type:
+                score += 55
+        elif economy == "tourism":
+            if "earth like" in body_type or "water world" in body_type or "ammonia" in body_type:
+                score += 65
+        return score
+
+    def _placement_score(
+        self,
+        site: SiteData,
+        facility: FacilityData,
+        related_bodies: set[str],
+    ) -> int:
+        reference = self._reference_for_facility_data(facility)
+        score = 0
+        if site.body in related_bodies:
+            score += 1000
+        elif any(self._planet_moon_neighbor(site.body, body) for body in related_bodies):
+            # Small bonus only: convenient nearby infrastructure, not an
+            # economic strong-link substitute for same-body placement.
+            score += 55
+
+        primary_body = self._primary_port_body()
+        local_refs = self._body_facility_references(site.body)
+        is_port = self._is_port_reference(reference)
+        local_ports = [other for other in local_refs if self._is_port_reference(other)]
+        local_support = [other for other in local_refs if not self._is_port_reference(other)]
+
+        # Update 3: port<->supporting-facility on the same body is a strong link;
+        # different bodies are only weak links.  Build goal clusters around an
+        # existing/planned port whenever the correct physical slot exists.
+        if not is_port and local_ports:
+            score += 520 + 30 * max(int(port.tier or 0) for port in local_ports)
+        elif is_port and local_support:
+            score += 420 + 20 * len(local_support)
+        elif primary_body and site.body == primary_body and not is_port:
+            score += 300
+        elif primary_body and self._planet_moon_neighbor(site.body, primary_body):
+            score += 25
+
+        economy = CATALOG._normalise(reference.market_economy or reference.economy)
+        if economy:
+            for other in local_refs:
+                other_economy = CATALOG._normalise(other.market_economy or other.economy)
+                if other_economy and other_economy == economy:
+                    score += 70
+
+            primary_goal, secondary_goal = self._effective_goal_names()
+            weights = CATALOG.goal_economy_weights(primary_goal, secondary_goal)
+            score += 8 * weights.get(economy, 0)
+            score += self._body_economy_affinity(site, economy)
+
+        # When otherwise equal, leave bodies with more capacity flexible.
+        if facility.preferred_site == "surface":
+            score += max(0, site.surface_total - site.surface_used)
         else:
-            for site in candidates:
-                if site.orbital_used < site.orbital_total:
-                    return f"{site.body} — Orbit {site.orbital_used + 1}"
-            for site in candidates:
-                if site.landable and site.surface_used < site.surface_total:
-                    return f"{site.body} — Surface {site.surface_used + 1}"
-        return "Enter available slots on Sites"
+            score += max(0, site.orbital_total - site.orbital_used)
+        return score
+
+    def _best_location_for_facility(
+        self,
+        facility: FacilityData,
+        reserved: set[str],
+    ) -> str:
+        group = facility.preferred_site
+        related_bodies = self._related_bodies_for_facility(facility)
+        candidates: list[tuple[int, tuple[Any, ...], int, str]] = []
+        for site in self.plan.sites:
+            if group == "surface":
+                if not site.landable:
+                    continue
+                used, total = site.surface_used, site.surface_total
+                label_word = "Surface"
+            elif group == "orbital":
+                used, total = site.orbital_used, site.orbital_total
+                label_word = "Orbit"
+            else:
+                continue
+            for number in range(used + 1, total + 1):
+                label = f"{site.body} — {label_word} {number}"
+                if label in reserved:
+                    continue
+                candidates.append((
+                    -self._placement_score(site, facility, related_bodies),
+                    self._body_sort_key(site.body, site.body_id),
+                    number,
+                    label,
+                ))
+        if candidates:
+            candidates.sort()
+            return candidates[0][3]
+        if group == "surface":
+            return "No available surface slots"
+        if group == "orbital":
+            return "No available orbital slots"
+        return "No compatible construction slots"
+
+    def _free_location(self, preferred: str) -> str:
+        """Return a free slot of the requested type only.
+
+        Surface and orbital construction are hard constraints.  A surface
+        settlement/hub is never silently moved into orbit, and an orbital
+        installation/port is never silently moved onto a planet.
+        """
+
+        dummy = FacilityData(
+            role="slot probe", reason="", preferred_site=preferred
+        )
+        return self._best_location_for_facility(dummy, set())
 
     def _assign_recommended_locations(self) -> None:
         reserved: set[str] = set()
         for facility in self.plan.facilities:
-            if facility.status in ("Complete", "Building now") and facility.location != "Unassigned":
+            if (
+                self._location_is_real(facility.location)
+                and (facility.status in ("Complete", "Building now") or facility.location_locked)
+            ):
                 reserved.add(facility.location)
                 continue
-            proposed = self._free_location(facility.preferred_site)
-            # Move forward if an earlier queue row already reserved the same first slot.
-            if proposed in reserved:
-                proposed = self._next_unreserved_location(facility.preferred_site, reserved)
+            proposed = self._best_location_for_facility(facility, reserved)
             facility.location = proposed
-            if proposed != "Enter available slots on Sites":
+            if self._location_is_real(proposed):
                 reserved.add(proposed)
 
     def _next_unreserved_location(self, preferred: str, reserved: set[str]) -> str:
-        groups = ("surface", "orbital") if preferred == "surface" else ("orbital", "surface")
-        for group in groups:
-            for site in self.plan.sites:
-                used = site.surface_used if group == "surface" else site.orbital_used
-                total = site.surface_total if group == "surface" else site.orbital_total
-                if group == "surface" and not site.landable:
-                    continue
-                for number in range(used + 1, total + 1):
-                    label = f"{site.body} — {'Surface' if group == 'surface' else 'Orbit'} {number}"
-                    if label not in reserved:
-                        return label
-        return "Enter available slots on Sites"
+        # Kept for older callers; unlike pre-v3.0.6 this never crosses the
+        # surface/orbital boundary.
+        dummy = FacilityData(
+            role="slot probe", reason="", preferred_site=preferred
+        )
+        return self._best_location_for_facility(dummy, reserved)
 
     def _site_markers(self) -> dict[str, list[str]]:
         markers: dict[str, list[str]] = {}
+        next_buildable = self._next_buildable_facility()
         for facility in self.plan.facilities:
             location = facility.location or ""
             matched = next(
@@ -1778,7 +3889,7 @@ class ConstructionPanel(QWidget):
                 marker = f"✓ {facility.role}"
             elif facility.status == "Building now":
                 marker = f"⚒ {facility.role}"
-            elif facility is next((f for f in self.plan.facilities if f.status == "Queued"), None):
+            elif facility is next_buildable:
                 marker = f"→ {facility.role}"
             else:
                 marker = f"• {facility.role}"
@@ -1833,41 +3944,105 @@ class ConstructionPanel(QWidget):
         orbital_total = sum(site.orbital_total for site in self.plan.sites)
         surface_used = sum(site.surface_used for site in self.plan.sites)
         surface_total = sum(site.surface_total for site in self.plan.sites)
+        capacity_notes: list[str] = []
+        if any(str(site.confidence).startswith("Estimated") for site in self.plan.sites):
+            capacity_notes.append("some surface capacity is estimated")
+        if self.plan.sites and orbital_total == 0:
+            capacity_notes.append("no orbital capacity entered")
+        suffix = f"  •  Setup note: {', '.join(capacity_notes)}" if capacity_notes else ""
         self.site_summary.setText(
             f"Build system: {self.display_system_name()}  •  "
             f"Orbital {orbital_used}/{orbital_total}  •  Surface {surface_used}/{surface_total}  •  "
             f"Available: {max(0, orbital_total-orbital_used)} orbital, "
-            f"{max(0, surface_total-surface_used)} surface"
+            f"{max(0, surface_total-surface_used)} surface{suffix}"
         )
 
-        next_facility = next((f for f in self.plan.facilities if f.status == "Queued"), None)
+        next_facility = self._next_buildable_facility()
         if next_facility is None:
-            self.sites_next.setText("Next build: plan complete or no goal recommendation available")
+            blocked = next((f for f in self.plan.facilities if f.status == "Queued"), None)
+            if blocked is None:
+                self.sites_next.setText("Next build: plan complete or no goal recommendation available")
+            else:
+                self.sites_next.setText(
+                    f"NO BUILDABLE NEXT FACILITY • {blocked.role} is blocked: "
+                    f"{self._facility_block_reason(blocked)}"
+                )
         else:
             self.sites_next.setText(
                 f"→ NEXT BUILD: {next_facility.role}  •  Build at {next_facility.location}  •  "
                 f"{next_facility.point_summary}  •  {next_facility.reason}"
             )
 
-    def _render_queue(self, goal: Optional[str] = None) -> None:
+    def _render_queue(
+        self,
+        goal: Optional[str] = None,
+        secondary_goal: Optional[str] = None,
+        plan_scope: Optional[str] = None,
+    ) -> None:
         goal = goal or self.plan.primary_goal
-        if goal != self.plan.primary_goal or not self.plan.facilities:
-            self._regenerate_facilities(goal)
+        secondary_goal = (
+            self.plan.secondary_goal if secondary_goal is None else secondary_goal
+        )
+        plan_scope = plan_scope or self._effective_plan_scope()
+        changed_metadata = self._clean_saved_site_facilities()
+        changed_metadata = self._refresh_plan_facility_metadata() or changed_metadata
+        if changed_metadata:
+            self._save_plan()
+
+        # A saved queue may contain only completed rows after an older Sites edit
+        # accidentally promoted planned bullet markers to existing facilities.
+        # If the selected objectives/build-out are still incomplete, regenerate
+        # instead of displaying a false "plan complete" state.
+        primary_before, secondary_before = self.selected_goal_progress(goal, secondary_goal)
+        has_pending = any(
+            row.status in ("Queued", "Building now") for row in self.plan.facilities
+        )
+        phase_before = self.current_development_phase(goal, secondary_goal, plan_scope)
+        needs_pending_work = primary_before.get("status") != "Complete"
+        if plan_scope != "Primary Goal Only" and secondary_before is not None:
+            needs_pending_work = needs_pending_work or secondary_before.get("status") != "Complete"
+        if plan_scope == "Goal-Directed Expansion":
+            needs_pending_work = needs_pending_work or not phase_before.startswith("Goal-directed expansion complete")
+        elif plan_scope == "Full System Build-Out":
+            needs_pending_work = needs_pending_work or phase_before != "Full system build-out complete"
+
+        if (
+            goal != self.plan.primary_goal
+            or secondary_goal != self.plan.secondary_goal
+            or plan_scope != self.plan.plan_scope
+            or not self.plan.facilities
+            or (not has_pending and needs_pending_work)
+        ):
+            self._regenerate_facilities(goal, secondary_goal, plan_scope)
         else:
+            changed = self._repair_impossible_building_focus()
+            changed = self._ensure_prerequisite_rows() or changed
+            changed = self._reorder_facilities_for_buildability() or changed
             self._assign_recommended_locations()
+            if changed:
+                self._save_plan()
 
         rows = self.plan.facilities
+        tier_2, tier_3 = self._construction_point_balance()
+        primary_progress, secondary_progress = self.selected_goal_progress(goal, secondary_goal)
+        phase = self.current_development_phase(goal, secondary_goal, plan_scope)
+        secondary_text = self._progress_label(secondary_progress)
+        point_source = "game-calibrated" if self.plan.point_balance_calibrated else "calculated"
         self.queue_notice.setText(
-            f"Build system: {self.display_system_name()}  •  Suggested order; verify any unconfirmed facility data in game."
+            f"{self.display_system_name()}  •  Points now: {tier_2} T2, {tier_3} T3 ({point_source})  •  "
+            f"Primary: {self._progress_label(primary_progress)}  •  "
+            f"Secondary: {secondary_text}  •  {phase}"
         )
         self.queue_table.setRowCount(len(rows))
-        next_facility: Optional[FacilityData] = None
+        next_facility = self._next_buildable_facility()
         for row, facility in enumerate(rows):
             if self.plan.primary_port_complete and facility.facility_id == "primary_port":
                 facility.status = "Complete"
-            if facility.status == "Queued" and next_facility is None:
-                next_facility = facility
+            block_reason = self._facility_block_reason(facility) if facility.status == "Queued" else ""
+            if facility.status == "Queued" and facility is next_facility:
                 action = "→ NEXT"
+            elif facility.status == "Queued" and block_reason:
+                action = "BLOCKED"
             elif facility.status == "Building now":
                 action = "⚒ BUILDING"
             elif facility.status == "Complete":
@@ -1879,18 +4054,31 @@ class ConstructionPanel(QWidget):
             values = [
                 str(row + 1),
                 facility.role,
+                self._queue_display_location(facility.location),
+                facility.preferred_site.title(),
+                facility.point_summary,
+                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
+                facility.status,
+                block_reason if action == "BLOCKED" else action,
+            ]
+            tooltips = [
+                str(row + 1),
+                facility.role,
                 facility.location,
                 facility.preferred_site.title(),
                 facility.point_summary,
-                facility.reason,
+                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
                 facility.status,
-                action,
+                block_reason if action == "BLOCKED" else action,
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setToolTip(tooltips[col])
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if action == "→ NEXT":
                     item.setBackground(QColor("#5B3B05"))
+                elif action == "BLOCKED":
+                    item.setForeground(QColor("#EF5350"))
                 elif action == "⚒ BUILDING":
                     item.setBackground(QColor("#4A3410"))
                 elif action == "✓ COMPLETE":
@@ -1899,7 +4087,19 @@ class ConstructionPanel(QWidget):
                     item.setForeground(QColor("#6F7B85"))
                 self.queue_table.setItem(row, col, item)
 
+        if hasattr(self, "queue_next_button"):
+            self.queue_next_button.setEnabled(next_facility is not None)
+
         if next_facility:
+            try:
+                next_row = rows.index(next_facility)
+                self.queue_table.selectRow(next_row)
+                self.queue_table.scrollToItem(
+                    self.queue_table.item(next_row, 0),
+                    QAbstractItemView.ScrollHint.EnsureVisible,
+                )
+            except (ValueError, AttributeError):
+                pass
             self.next_build_value.setText(next_facility.role)
             self.next_location_value.setText(next_facility.location)
             self.next_reason_value.setText(
@@ -1907,18 +4107,75 @@ class ConstructionPanel(QWidget):
                 f"confidence: {next_facility.confidence}"
             )
             self.set_next_current_button.setEnabled(
-                next_facility.location != "Enter available slots on Sites"
+                self._location_is_real(next_facility.location)
             )
             self.undo_focus_button.setEnabled(bool(self.plan.previous_current_build))
         else:
-            self.next_build_value.setText("Plan complete or custom plan")
-            self.next_location_value.setText("None")
-            self.next_reason_value.setText("")
+            blocked = next((f for f in self.plan.facilities if f.status == "Queued"), None)
+            if blocked is not None:
+                self.next_build_value.setText("No buildable next facility")
+                self.next_location_value.setText(blocked.location)
+                self.next_reason_value.setText(
+                    f"{blocked.role} is currently blocked. {self._facility_block_reason(blocked)}"
+                )
+            else:
+                self.next_build_value.setText("No more recommended builds")
+                self.next_location_value.setText("None")
+                self.next_reason_value.setText("")
             self.set_next_current_button.setEnabled(False)
             self.undo_focus_button.setEnabled(bool(self.plan.previous_current_build))
         if hasattr(self, "sites_next"):
             self._render_sites()
         self._render_materials()
+
+    def _show_queue_context_menu(self, pos) -> None:
+        """Right-click shortcuts for the same Build Queue commands as the buttons."""
+        item = self.queue_table.itemAt(pos)
+        if item is not None:
+            self.queue_table.selectRow(item.row())
+
+        facility = self._selected_queue_facility()
+        menu = QMenu(self.queue_table)
+
+        track_selected = menu.addAction("Track Selected Build")
+        track_allowed = bool(
+            facility is not None
+            and facility.status == "Queued"
+            and not self._facility_block_reason(facility)
+        )
+        track_selected.setEnabled(track_allowed)
+        track_next = menu.addAction("Track NEXT Build")
+        track_next.setEnabled(self._next_buildable_facility() is not None)
+
+        menu.addSeparator()
+        change_location = menu.addAction("Change Location…")
+        mark_complete = menu.addAction("Mark Complete (manual)")
+        skip_selected = menu.addAction("Skip Selected")
+        change_location.setEnabled(facility is not None)
+        mark_complete.setEnabled(bool(facility is not None and facility.status in ("Queued", "Building now")))
+        skip_selected.setEnabled(bool(facility is not None and facility.status in ("Queued", "Building now")))
+
+        if self.plan.previous_current_build:
+            menu.addSeparator()
+            undo_tracking = menu.addAction("Undo Build Selection")
+        else:
+            undo_tracking = None
+
+        chosen = menu.exec(self.queue_table.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen == track_selected:
+            self._run_user_action(self.set_selected_queue_as_current)
+        elif chosen == track_next:
+            self._run_user_action(self.set_recommendation_as_current)
+        elif chosen == change_location:
+            self._run_user_action(self.change_selected_queue_location)
+        elif chosen == mark_complete:
+            self._run_user_action(self.mark_selected_queue_complete)
+        elif chosen == skip_selected:
+            self._run_user_action(self.skip_selected_queue_item)
+        elif undo_tracking is not None and chosen == undo_tracking:
+            self._run_user_action(self.undo_focus_change)
 
     def _selected_queue_facility(self) -> Optional[FacilityData]:
         row = self.queue_table.currentRow()
@@ -1927,15 +4184,34 @@ class ConstructionPanel(QWidget):
         return self.plan.facilities[row]
 
     def set_recommendation_as_current(self) -> None:
-        facility = next((f for f in self.plan.facilities if f.status == "Queued"), None)
+        facility = self._next_buildable_facility()
         if facility is None:
             return
         self._set_focus_facility(facility)
 
     def set_selected_queue_as_current(self) -> None:
         facility = self._selected_queue_facility()
-        if facility is not None:
-            self._set_focus_facility(facility)
+        if facility is None:
+            return
+        if facility.status != "Queued":
+            if facility.status == "Building now":
+                QMessageBox.information(self, "Already tracked", f"{facility.role} is already the tracked build.")
+            else:
+                QMessageBox.information(
+                    self,
+                    "Not a queued build",
+                    f"{facility.role} is {facility.status.lower()} and cannot be selected as the current build.",
+                )
+            return
+        blocked = self._facility_block_reason(facility)
+        if blocked:
+            QMessageBox.information(
+                self,
+                "Facility is blocked",
+                f"{facility.role}\n\n{blocked}",
+            )
+            return
+        self._set_focus_facility(facility)
 
     def _set_focus_facility(self, facility: FacilityData) -> None:
         if self.plan.current_build and self.plan.current_build != "Not selected":
@@ -1945,11 +4221,18 @@ class ConstructionPanel(QWidget):
             if other.status == "Building now":
                 other.status = "Queued"
         facility.status = "Building now"
+        facility.construction_started = False
         self.plan.current_build = facility.role
         self.plan.current_location = facility.location
+        # A new tracking session needs a fresh timestamp so cached depot events
+        # from an older construction site cannot be mistaken for this build.
+        self.active_focus = {}
         self._save_plan()
         self._save_active_focus_record(facility)
         self._apply_plan()
+        # Tracking a build is primarily a materials workflow. Move the player to
+        # the operational screen automatically; the Build Queue remains one click away.
+        self.set_view_name("Materials")
 
     def undo_focus_change(self) -> None:
         previous_build = self.plan.previous_current_build
@@ -1974,6 +4257,103 @@ class ConstructionPanel(QWidget):
             self._save_active_focus_record(restored)
         self._apply_plan()
 
+
+    def _next_actual_location_on_body(
+        self, body: str, preferred_site: str, facility: Optional[FacilityData] = None
+    ) -> str:
+        """Return the next physical slot label on one specific Elite body."""
+        prefix = "Surface" if preferred_site == "surface" else "Orbit"
+        highest = 0
+        for other in self.plan.facilities:
+            if other is facility or other.status not in ("Complete", "Building now"):
+                continue
+            location = str(other.location or "")
+            if not location.startswith(body + " — " + prefix + " "):
+                continue
+            try:
+                highest = max(highest, int(location.rsplit(" ", 1)[-1]))
+            except ValueError:
+                pass
+        site = next((row for row in self.plan.sites if row.body == body), None)
+        if site is not None:
+            used = site.surface_used if preferred_site == "surface" else site.orbital_used
+            highest = max(highest, int(used or 0))
+        return f"{body} — {prefix} {highest + 1}"
+
+    def _record_actual_location(self, facility: FacilityData, body: str) -> bool:
+        body = str(body or "").strip()
+        if not body or body.casefold().startswith("unknown"):
+            return False
+        planned_body = self._facility_body_from_location(facility.location)
+        if planned_body == body:
+            facility.location_confirmed = True
+            return False
+        old_location = facility.location
+        new_location = self._next_actual_location_on_body(body, facility.preferred_site, facility)
+        if not facility.planned_location:
+            facility.planned_location = old_location
+        facility.location = new_location
+        facility.location_confirmed = True
+        facility.location_locked = True
+        facility.deviation_note = (
+            f"Elite reports this build on {body}; Observatory originally planned {old_location}."
+        )
+        if self.plan.current_build == facility.role:
+            self.plan.current_location = new_location
+        site = next((row for row in self.plan.sites if row.body == body), None)
+        if site is not None:
+            try:
+                slot = int(new_location.rsplit(" ", 1)[-1])
+            except ValueError:
+                slot = 0
+            if facility.preferred_site == "surface":
+                site.surface_used = max(site.surface_used, slot)
+            else:
+                site.orbital_used = max(site.orbital_used, slot)
+        return True
+
+    def change_selected_queue_location(self) -> None:
+        facility = self._selected_queue_facility()
+        if facility is None:
+            return
+        eligible: list[str] = []
+        for site in self.plan.sites:
+            if facility.preferred_site == "surface":
+                if not site.landable:
+                    continue
+                if site.surface_total > 0 and site.surface_used >= site.surface_total:
+                    continue
+            else:
+                if site.orbital_total > 0 and site.orbital_used >= site.orbital_total:
+                    continue
+            eligible.append(site.body)
+        if not eligible:
+            QMessageBox.information(
+                self, "No compatible location",
+                "No compatible body/slot is currently available in Sites."
+            )
+            return
+        body, ok = QInputDialog.getItem(
+            self,
+            "Change build location",
+            f"Choose the body for:\n{facility.role}",
+            eligible,
+            0,
+            False,
+        )
+        if not ok or not body:
+            return
+        old_location = facility.location
+        new_location = self._next_actual_location_on_body(str(body), facility.preferred_site, facility)
+        if not facility.planned_location:
+            facility.planned_location = old_location
+        facility.location = new_location
+        facility.location_locked = True
+        facility.deviation_note = f"Location manually changed from {old_location} to {new_location}."
+        if self.plan.current_build == facility.role:
+            self.plan.current_location = new_location
+        self._save_plan()
+        self._apply_plan()
 
     def skip_selected_queue_item(self) -> None:
         facility = self._selected_queue_facility()
@@ -2024,21 +4404,30 @@ class ConstructionPanel(QWidget):
             return ("No focus build", "Trips —", "Source: —")
         rows = self._stored_materials_for(facility)
         capacity = max(1, int(self.plan.ship_capacity_tons or 1))
-        needed = [row for row in rows if row.still_needed > 0]
+        needed = [row for row in rows if row.delivery_remaining > 0]
         if not needed:
             return ("Materials: complete", "Trips 0", "Source: —")
-        needed.sort(key=lambda row: row.still_needed, reverse=True)
+        needed.sort(key=lambda row: row.delivery_remaining, reverse=True)
         top = needed[0]
-        total_left = sum(row.still_needed for row in needed)
+        total_left = sum(row.delivery_remaining for row in needed)
         trips = (total_left + capacity - 1) // capacity
-        source = top.source.strip() if top.source else ""
-        if self._is_placeholder_source(source):
-            source = "Paste Location"
+        if all(row.acquisition_needed == 0 for row in needed):
+            source = "On ship/carrier"
+        else:
+            buy_row = max(needed, key=lambda row: row.acquisition_needed)
+            source = buy_row.source.strip() if buy_row.source else ""
+            if self._is_placeholder_source(source):
+                source = "Paste Location"
         return (
-            f"{top.commodity}: {top.still_needed:,} left",
+            f"{top.commodity}: {top.delivery_remaining:,} left",
             f"Trips {trips}",
             f"Source: {source}",
         )
+
+    def focus_material_progress_percent(self) -> int:
+        """Delivered-material percentage for the pinned construction job."""
+        _title, _detail, _source, progress = self._next_action_data()
+        return max(0, min(100, int(progress)))
 
     def set_view_name(self, name: str) -> None:
         mapping = {"Overview": 0, "Sites": 1, "Build Queue": 2, "Materials": 3}

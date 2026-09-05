@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
@@ -39,12 +40,23 @@ def main() -> None:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     monitor = JournalMonitor(journal_dir, history_files=args.history_files)
-    monitor.start()
-
     window = OverlayWindow(monitor, always_on_top=not args.no_top)
+
+    # Show the application immediately.  Journal/history reconstruction happens
+    # in the background and fills the already-visible fields as data becomes
+    # available.  This avoids the old "nothing happened" launch experience.
+    window.set_startup_loading(True, "Preparing Observatory…")
+    monitor.startup_progress.connect(window.set_startup_message)
+    monitor.startup_finished.connect(window.finish_startup_loading)
+    monitor.startup_failed.connect(window.fail_startup_loading)
+
     window.show()
     window.raise_()
     window.activateWindow()
+
+    # Give the first paint event a chance to put the loading screen on the
+    # desktop before the background loader starts doing disk work.
+    QTimer.singleShot(75, monitor.start_async)
 
     sys.exit(app.exec())
 

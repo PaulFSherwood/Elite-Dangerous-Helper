@@ -4,6 +4,41 @@ QWidget {
     font-size: 13px;
 }
 
+/* Runtime activity feedback -------------------------------------------------
+   A subtle warm/red tint tells the user that Observatory is applying fresh
+   Journal/Cargo/Market data.  It is deliberately darker than an error state. */
+QWidget#fullContent[updating="true"] {
+    background-color: #28151A;
+}
+
+QFrame#thinCard[updating="true"] {
+    background-color: #28151A;
+    border-color: #7A3A42;
+}
+
+QFrame#startupOverlay {
+    background-color: rgba(24, 12, 16, 248);
+    border: 2px solid #7A3A42;
+    border-radius: 12px;
+}
+
+QLabel#startupTitle {
+    color: #F8D7DA;
+    background-color: transparent;
+    font-size: 24px;
+    font-weight: bold;
+    padding: 8px;
+}
+
+QLabel#startupMessage {
+    color: #E6EDF3;
+    background-color: transparent;
+    font-size: 15px;
+    padding: 8px;
+}
+
+
+
 QLabel {
     background-color: transparent;
     color: #E6EDF3;
@@ -425,12 +460,30 @@ QLabel#constructionStatusPill {
 }
 
 QLabel#materialSourcePill {
-    background-color: #5B21B6;
-    color: #FFFFFF;
-    border: 1px solid #8B5CF6;
+    background-color: #27313D;
+    color: #E6EDF3;
+    border: 1px solid #465565;
     border-radius: 7px;
     padding: 5px 9px;
     font-weight: 700;
+}
+
+QLabel#materialSourcePill[sourceKind="local"] {
+    background-color: #211A2E;
+    color: #D8B4FE;
+    border-color: #A855F7;
+}
+
+QLabel#materialSourcePill[sourceKind="external"] {
+    background-color: #123047;
+    color: #BAE6FD;
+    border-color: #3B82A0;
+}
+
+QLabel#materialSourcePill[sourceKind="none"] {
+    background-color: #18232D;
+    color: #8E9AA6;
+    border-color: #344452;
 }
 
 QFrame#nextHaulCard {
@@ -449,4 +502,71 @@ QLabel#materialSourcePill[missing="true"] {
     background-color: #493710;
     color: #F59E0B;
     border: 1px solid #8A6300;
+}
+
+/* Construction planner v3.0.7 ----------------------------------------- */
+QPushButton#constructionPrimaryAction {
+    background-color: #17324A;
+    color: #EAF4FF;
+    border: 1px solid #3B6B8F;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: 700;
+}
+QPushButton#constructionPrimaryAction:hover {
+    background-color: #20425E;
+    border-color: #60A5FA;
+}
+QLabel#constructionGoalStatus {
+    color: #9FB0BF;
+    font-size: 11px;
+    padding: 0 2px 2px 2px;
+}
+QLabel#constructionPhaseStatus {
+    background-color: #102131;
+    color: #60A5FA;
+    border: 1px solid #263A4A;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-weight: 700;
+}
+
+/* Construction planner v3.0.8 ----------------------------------------- */
+QLabel#constructionGoalSummary {
+    color: #D9E6EF;
+    background-color: #0F1B24;
+    border: 1px solid #263A4A;
+    border-radius: 6px;
+    padding: 5px 8px;
+}
+
+/* Construction planner migration fix v3.1.0 ------------------------- */
+QLabel#constructionLock[editing="true"] {
+    color: #F59E0B;
+    font-weight: 700;
+    padding: 2px 6px;
+    border: 1px solid #8A6300;
+    border-radius: 5px;
+    background-color: #2A210B;
+}
+
+
+/* Construction usability pass v3.1.0 ---------------------------------- */
+QLabel#constructionWorkflowHint {
+    color: #7F95A6;
+    font-size: 11px;
+    padding: 2px 1px;
+}
+
+QPushButton#constructionSecondaryAction {
+    text-align: left;
+    color: #9FB0BF;
+    background-color: #101A22;
+    border: 1px solid #263A4A;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+QPushButton#constructionSecondaryAction:hover {
+    color: #D9E6EF;
+    border-color: #3B6B8F;
 }
