@@ -291,3 +291,76 @@ class GoalCompletionAndBuildoutTests(unittest.TestCase):
             refs,
         )
         self.assertEqual(ranked[0]["name"], "Industrial & Commodity Network")
+
+
+class TargetedExpansionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.catalog = ColonisationCatalog()
+
+    def test_local_construction_supplies_secondary_maps_to_supply_network(self):
+        self.assertEqual(
+            self.catalog.secondary_goal_map.get("Local Construction Supplies"),
+            "Colonisation Supply Network",
+        )
+        steps = self.catalog.combined_goal_steps(
+            "Mining and Refinery Hub", "Local Construction Supplies"
+        )
+        ids = {facility.id for facility, _reason in steps}
+        self.assertIn("settlement_small_agricultural_settlement_consus", ids)
+        self.assertIn("planetary_outpost_necessitas", ids)
+
+    def test_targeted_expansion_does_not_pull_unrelated_late_game_categories(self):
+        known_ids = [
+            "planetary_outpost_hephaestus",
+            "settlement_large_mining_aerecura",
+            "installation_mining_outpost_euthenia",
+            "hub_refinery_silenus",
+            "settlement_small_mining_ourea",
+            "extraction_hub_tartarus",
+        ]
+        known = [self.catalog.facility(i) for i in known_ids]
+        known = [facility for facility in known if facility is not None]
+        targeted = self.catalog.targeted_buildout_stages(
+            "Mining and Refinery Hub", "Tritium Availability", known
+        )
+        names = {stage.get("name") for stage in targeted}
+        self.assertIn("Industrial & Commodity Network", names)
+        self.assertNotIn("Tourism & Services Network", names)
+        self.assertNotIn("Security & Military Network", names)
+        self.assertNotIn("Independent Operations", names)
+
+    def test_target_count_is_smaller_than_full_catalog_for_broad_stages(self):
+        industrial = next(
+            stage for stage in self.catalog.buildout_stages
+            if stage.get("name") == "Industrial & Commodity Network"
+        )
+        self.assertLess(int(industrial.get("target_count", 99)), len(industrial.get("facility_ids", [])))
+
+class SettlementMenuHierarchyTests(unittest.TestCase):
+    def setUp(self):
+        self.catalog = ColonisationCatalog()
+
+    def test_industrial_settlement_display_matches_two_tier_menu(self):
+        fontus = self.catalog.facility("settlement_small_industrial_settlement_fontus")
+        metope = self.catalog.facility("settlement_medium_industrial_settlement_meteope")
+        gaea = self.catalog.facility("settlement_large_industrial_settlement_gaea")
+        self.assertEqual(fontus.display_name, "Settlement / Tier 1 / Industrial / Tier 1 / Fontus")
+        self.assertEqual(metope.display_name, "Settlement / Tier 1 / Industrial / Tier 1 / Metope")
+        self.assertEqual(gaea.display_name, "Settlement / Tier 1 / Industrial / Tier 2 / Gaea")
+
+    def test_settlement_outer_tier_two_has_no_second_tier_menu(self):
+        pheobe = self.catalog.facility("settlement_small_scientific_settlement_pheobe")
+        aergia = self.catalog.facility("settlement_small_tourism_settlement_aergia")
+        self.assertEqual(pheobe.display_name, "Settlement / Tier 2 / Research Bio / Pheobe")
+        self.assertEqual(aergia.display_name, "Settlement / Tier 2 / Tourism / Aergia")
+
+    def test_tier_one_same_economy_layouts_are_functionally_equivalent(self):
+        ids = [
+            "settlement_small_industrial_settlement_fontus",
+            "settlement_medium_industrial_settlement_meteope",
+            "settlement_medium_industrial_settlement_palici",
+            "settlement_medium_industrial_settlement_minthe",
+        ]
+        signatures = {self.catalog.functional_signature(self.catalog.facility(fid)) for fid in ids}
+        self.assertEqual(len(signatures), 1)

@@ -89,7 +89,7 @@ No additional prerequisite is recorded in the current v3.4.1 dependency table fo
 
 ### Settlement
 
-#### Tier 1 — Medium Agricultural Settlement — Agriculture
+#### Tier 1 — Small Agricultural Settlement — Agriculture
 
 - Cost: **0 construction points**
 - Reward on completion: **+1 T2**
@@ -98,17 +98,17 @@ No additional prerequisite is recorded in the current v3.4.1 dependency table fo
   - Picumnus
   - Annona
 
-#### Tier 1 — Medium Industrial Settlement
+#### Tier 1 — Small Industrial Settlement
 
 - Cost: **0 construction points**
 - Reward on completion: **+1 T2**
 - Market economy/link type: `Industrial`
 - Layouts:
-  - Meteope
+  - Metope
   - Palici
   - Minthe
 
-#### Tier 1 — Medium Military Settlement
+#### Tier 1 — Small Military Settlement
 
 - Cost: **0 construction points**
 - Reward on completion: **+1 T2**
@@ -118,7 +118,7 @@ No additional prerequisite is recorded in the current v3.4.1 dependency table fo
   - Enyo
   - Polemos
 
-#### Tier 1 — Medium Mining Settlement — Extraction
+#### Tier 1 — Small Mining Settlement — Extraction
 
 - Cost: **0 construction points**
 - Reward on completion: **+1 T2**
@@ -226,7 +226,7 @@ No additional prerequisite is recorded in the current v3.4.1 dependency table fo
 - Market economy/link type: `Tourism`
 - Requires: **Installation — Satellite**
 - Layouts:
-  - Comos
+  - Comus
   - Gelos
 
 #### Tier 2 — Small Scientific Settlement — Research Bio

@@ -4,6 +4,41 @@ QWidget {
     font-size: 13px;
 }
 
+/* Runtime activity feedback -------------------------------------------------
+   A subtle warm/red tint tells the user that Observatory is applying fresh
+   Journal/Cargo/Market data.  It is deliberately darker than an error state. */
+QWidget#fullContent[updating="true"] {
+    background-color: #28151A;
+}
+
+QFrame#thinCard[updating="true"] {
+    background-color: #28151A;
+    border-color: #7A3A42;
+}
+
+QFrame#startupOverlay {
+    background-color: rgba(24, 12, 16, 248);
+    border: 2px solid #7A3A42;
+    border-radius: 12px;
+}
+
+QLabel#startupTitle {
+    color: #F8D7DA;
+    background-color: transparent;
+    font-size: 24px;
+    font-weight: bold;
+    padding: 8px;
+}
+
+QLabel#startupMessage {
+    color: #E6EDF3;
+    background-color: transparent;
+    font-size: 15px;
+    padding: 8px;
+}
+
+
+
 QLabel {
     background-color: transparent;
     color: #E6EDF3;
@@ -425,12 +460,30 @@ QLabel#constructionStatusPill {
 }
 
 QLabel#materialSourcePill {
-    background-color: #5B21B6;
-    color: #FFFFFF;
-    border: 1px solid #8B5CF6;
+    background-color: #27313D;
+    color: #E6EDF3;
+    border: 1px solid #465565;
     border-radius: 7px;
     padding: 5px 9px;
     font-weight: 700;
+}
+
+QLabel#materialSourcePill[sourceKind="local"] {
+    background-color: #211A2E;
+    color: #D8B4FE;
+    border-color: #A855F7;
+}
+
+QLabel#materialSourcePill[sourceKind="external"] {
+    background-color: #123047;
+    color: #BAE6FD;
+    border-color: #3B82A0;
+}
+
+QLabel#materialSourcePill[sourceKind="none"] {
+    background-color: #18232D;
+    color: #8E9AA6;
+    border-color: #344452;
 }
 
 QFrame#nextHaulCard {

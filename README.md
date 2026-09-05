@@ -117,6 +117,34 @@ assets/               app icon and ship images
 - Supports opacity / solid window toggle.
 - Uses an external runtime stylesheet at `styles/dashboard.qss`.
 
+### Construction Material Acquisition and Delivery Tracking
+
+Construction Mode keeps **acquired cargo** separate from materials that have actually been **delivered to the active construction site**. This makes it possible to load the ship or carrier ahead of time without the build being credited until the material is deposited.
+
+The Materials table tracks:
+
+- **Required** — total amount needed for the current construction project.
+- **Delivered** — amount already deposited at the construction site.
+- **Ship** — amount currently aboard the active ship.
+- **Carrier** — amount currently tracked on the fleet carrier. `Update pending` is shown when the app is waiting for a fresh carrier inventory update.
+- **Still needed** — what the construction site still requires. Cargo on the ship or carrier does **not** reduce this value until it is delivered.
+- **Ship trips** — estimated trips based on the current ship cargo capacity.
+- **Material Source** — the tracked or most recently observed source for the commodity.
+
+The table also gives visual source/status cues. A **purple outline** marks a material with a local source in the locked build system, **blue** marks the last purchase source, and **amber** is used when the source is still unknown. Completed/stocked rows are muted so the remaining shortages stand out while their source information is retained.
+
+#### Getting materials
+
+<img src="assets/Construction-MaterialGet.png" alt="Construction material acquisition tracking" width="100%">
+
+This view shows materials after they have been acquired but **before they are delivered**. For example, Food Cartridges, Ceramic Composites, Surface Stabilisers, and Polymers are already aboard the ship, while **Still needed** continues to show the construction requirement. This prevents cargo being mistaken for completed delivery and also allows extra material to be carried for later builds.
+
+#### Dropping materials off
+
+<img src="assets/Construction-MaterialDropOff.png" alt="Construction material drop-off tracking" width="100%">
+
+After a depot delivery, the app updates **Delivered** and reduces **Still needed** from the journal data. In the example above, Polymers show **327 required, 256 delivered, and 71 still needed**. Fully delivered rows become muted, while partially completed rows remain active so it is obvious what still has to be hauled. The **Next Haul** summary then continues planning from the remaining requirement.
+
 ## Install on Ubuntu / Kubuntu
 
 Install the required packages:

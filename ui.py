@@ -6,6 +6,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QSettings, QSize, QRect, QTimer
 from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -48,7 +49,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.1.1"
+VERSION = "v3.1.6"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -430,6 +431,8 @@ class OverlayWindow(QWidget):
         self.full_geometry = self.geometry()
         self.thin_target_system: Optional[str] = None
         self.thin_known_targets: set[str] = set()
+        self._startup_loading = False
+        self._update_visual_active = False
 
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -846,6 +849,7 @@ class OverlayWindow(QWidget):
         self.construction_panel.carrier_empty_baseline_requested.connect(
             self.on_carrier_empty_baseline_requested
         )
+        self.construction_panel.activity_changed.connect(self.on_construction_activity_changed)
         self.construction_panel.tabs.currentChanged.connect(self.sync_construction_view_combo)
 
         self.main_stack = QStackedWidget()
@@ -1053,6 +1057,25 @@ class OverlayWindow(QWidget):
         self.setLayout(root_layout)
         self.thin_card.hide()
 
+        # Full-window startup overlay.  The window itself is visible immediately
+        # while journal history and local JSON snapshots are reconstructed.
+        self.startup_overlay = QFrame(self)
+        self.startup_overlay.setObjectName("startupOverlay")
+        startup_layout = QVBoxLayout(self.startup_overlay)
+        startup_layout.setContentsMargins(40, 40, 40, 40)
+        startup_layout.addStretch()
+        self.startup_title_label = QLabel("Observatory is starting")
+        self.startup_title_label.setObjectName("startupTitle")
+        self.startup_title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.startup_message_label = QLabel("Loading Elite Dangerous data…")
+        self.startup_message_label.setObjectName("startupMessage")
+        self.startup_message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.startup_message_label.setWordWrap(True)
+        startup_layout.addWidget(self.startup_title_label)
+        startup_layout.addWidget(self.startup_message_label)
+        startup_layout.addStretch()
+        self.startup_overlay.hide()
+
         # ------------------------------------------------------------------
         # 10. Stylesheet and live updates
         #
@@ -1070,6 +1093,16 @@ class OverlayWindow(QWidget):
         self._monitor_refresh_timer.setInterval(40)
         self._monitor_refresh_timer.timeout.connect(self.refresh)
 
+        # Keep a subtle update tint visible long enough for a person to notice.
+        # Fast updates barely flash; expensive updates provide immediate feedback
+        # instead of looking like a frozen window.
+        self._update_visual_clear_timer = QTimer(self)
+        self._update_visual_clear_timer.setSingleShot(True)
+        self._update_visual_clear_timer.setInterval(220)
+        self._update_visual_clear_timer.timeout.connect(
+            lambda: self._set_update_visual(False)
+        )
+
         self.set_table_filter("All")
         self.monitor.updated.connect(self.schedule_refresh)
         self.refresh()
@@ -1084,22 +1117,96 @@ class OverlayWindow(QWidget):
         if saved_mode:
             self.set_view_mode(True)
 
-    def set_app_mode(self, mode: str) -> None:
-        construction = mode == "Construction"
-        self.search_select_stack.setCurrentIndex(1 if construction else 0)
-        self.search_rules_stack.setCurrentIndex(1 if construction else 0)
-        self.main_stack.setCurrentIndex(1 if construction else 0)
-        self.bottom_widget.setVisible(not construction)
-        if hasattr(self, "middle_status_widget"):
-            self.middle_status_widget.setVisible(not construction)
-        if hasattr(self, "stats_card"):
-            self.stats_card.setVisible(not construction)
-        self.construction_view_combo.setEnabled(construction)
-        self.settings.setValue("app_mode", mode)
-        if construction:
-            self.construction_panel.set_system(self.monitor.state.system or "Unknown system")
-            self.set_construction_view(self.construction_view_combo.currentText())
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "startup_overlay"):
+            self.startup_overlay.setGeometry(self.rect())
+
+    def set_startup_loading(self, active: bool, message: str = "Loading Elite Dangerous data…") -> None:
+        self._startup_loading = bool(active)
+        if not hasattr(self, "startup_overlay"):
+            return
+        if active:
+            self.startup_message_label.setText(message)
+            self.startup_overlay.setGeometry(self.rect())
+            self.startup_overlay.show()
+            self.startup_overlay.raise_()
+            self._set_update_visual(True)
+        else:
+            self.startup_overlay.hide()
+            self._set_update_visual(False)
+
+    def set_startup_message(self, message: str) -> None:
+        if not self._startup_loading or not hasattr(self, "startup_message_label"):
+            return
+        self.startup_message_label.setText(str(message or "Loading Elite Dangerous data…"))
+
+    def finish_startup_loading(self) -> None:
+        self._startup_loading = False
+        if hasattr(self, "startup_overlay"):
+            self.startup_overlay.hide()
+        self._set_update_visual(False)
         self.refresh()
+
+    def fail_startup_loading(self, message: str) -> None:
+        self._startup_loading = True
+        if hasattr(self, "startup_overlay"):
+            self.startup_title_label.setText("Observatory could not finish starting")
+            self.startup_message_label.setText(str(message or "Unknown startup error"))
+            self.startup_overlay.setGeometry(self.rect())
+            self.startup_overlay.show()
+            self.startup_overlay.raise_()
+        self._set_update_visual(True)
+
+    def _set_update_visual(self, active: bool) -> None:
+        # Startup owns the tint until loading is actually finished.
+        if not active and self._startup_loading:
+            return
+        active = bool(active)
+        if self._update_visual_active == active:
+            return
+        self._update_visual_active = active
+        value = "true" if active else "false"
+        for widget_name in ("full_content", "thin_card"):
+            widget = getattr(self, widget_name, None)
+            if widget is None:
+                continue
+            widget.setProperty("updating", value)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+            widget.update()
+
+    def _queue_update_visual_clear(self) -> None:
+        if self._startup_loading:
+            return
+        if hasattr(self, "_update_visual_clear_timer"):
+            self._update_visual_clear_timer.start()
+
+    def set_app_mode(self, mode: str) -> None:
+        show_activity = hasattr(self, "_update_visual_clear_timer") and not self._startup_loading
+        if show_activity:
+            self._update_visual_clear_timer.stop()
+            self._set_update_visual(True)
+            QApplication.processEvents()
+        try:
+            construction = mode == "Construction"
+            self.search_select_stack.setCurrentIndex(1 if construction else 0)
+            self.search_rules_stack.setCurrentIndex(1 if construction else 0)
+            self.main_stack.setCurrentIndex(1 if construction else 0)
+            self.bottom_widget.setVisible(not construction)
+            if hasattr(self, "middle_status_widget"):
+                self.middle_status_widget.setVisible(not construction)
+            if hasattr(self, "stats_card"):
+                self.stats_card.setVisible(not construction)
+            self.construction_view_combo.setEnabled(construction)
+            self.settings.setValue("app_mode", mode)
+            if construction:
+                self.construction_panel.set_system(self.monitor.state.system or "Unknown system")
+                self.set_construction_view(self.construction_view_combo.currentText())
+            self.refresh()
+        finally:
+            if show_activity:
+                self._queue_update_visual_clear()
 
     def set_construction_view(self, view: str) -> None:
         if hasattr(self, "construction_panel"):
@@ -1116,6 +1223,17 @@ class OverlayWindow(QWidget):
         names = list(commodities) if isinstance(commodities, (list, tuple, set)) else []
         self.monitor.set_carrier_empty_baseline(names)
         self.refresh()
+
+    def on_construction_activity_changed(self, active: bool) -> None:
+        """Show the journal-update busy tint for player-triggered planner work too."""
+        if self._startup_loading:
+            return
+        if active:
+            if hasattr(self, "_update_visual_clear_timer"):
+                self._update_visual_clear_timer.stop()
+            self._set_update_visual(True)
+        else:
+            self._queue_update_visual_clear()
 
     def on_current_build_changed(self, facility: str, location: str) -> None:
         self.construction_status_label.setText(
@@ -1143,9 +1261,16 @@ class OverlayWindow(QWidget):
         self.refresh()
 
     def toggle_construction_system_lock(self) -> None:
-        state = self.monitor.state
-        self.construction_panel.toggle_system_lock(state.system or "Unknown system")
-        self.refresh()
+        self._set_update_visual(True)
+        if hasattr(self, "_update_visual_clear_timer"):
+            self._update_visual_clear_timer.stop()
+        QApplication.processEvents()
+        try:
+            state = self.monitor.state
+            self.construction_panel.toggle_system_lock(state.system or "Unknown system")
+            self.refresh()
+        finally:
+            self._queue_update_visual_clear()
 
     def toggle_view_mode(self) -> None:
         self.set_view_mode(not self.thin_mode)
@@ -1717,6 +1842,13 @@ class OverlayWindow(QWidget):
 
     def schedule_refresh(self) -> None:
         """Coalesce bursts of monitor signals into one responsive UI refresh."""
+        # During startup, state is deliberately being reconstructed on a worker
+        # thread.  The startup overlay owns the UI until that snapshot is ready.
+        if self._startup_loading:
+            return
+        self._set_update_visual(True)
+        if hasattr(self, "_update_visual_clear_timer"):
+            self._update_visual_clear_timer.stop()
         if not self._monitor_refresh_timer.isActive():
             self._monitor_refresh_timer.start()
 
@@ -1737,6 +1869,7 @@ class OverlayWindow(QWidget):
                 state.carrier_inventory_known,
                 state.carrier_known_commodities,
                 state.market_sources,
+                state.market_sources_by_system,
             )
             self.construction_panel.set_construction_depots(state.construction_depots)
             plan = self.construction_panel.plan
@@ -1860,6 +1993,7 @@ class OverlayWindow(QWidget):
                 f"Commander: {commander}        Ship: {footer_ship}        Elite Dangerous Journal Helper"
             )
             self.footer_version_label.setText(VERSION)
+            self._queue_update_visual_clear()
             return
         else:
             self.update_info_card(self.other_card, "✦", "Other scanned", str(other_scanned_count))
@@ -2056,6 +2190,7 @@ class OverlayWindow(QWidget):
         # auto scroll
         self.log_box.setPlainText("\n".join(state.messages))
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
+        self._queue_update_visual_clear()
 
     def closeEvent(self, event) -> None:
         # Flush any debounced construction-plan/settings writes before exit.

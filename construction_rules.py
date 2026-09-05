@@ -83,6 +83,29 @@ class FacilityRef:
     def display_name(self) -> str:
         if self.id == "primary_port":
             return "Primary Port"
+
+        # Settlement is unusual in Elite's construction menu: the first Tier
+        # selects the settlement branch, then Tier-1 branches such as
+        # Industrial/Extraction have a *second* Tier selector for the actual
+        # layout.  Keep ``self.tier`` as the mechanical/layout tier used by
+        # construction-point logic; only the display path mirrors the menu.
+        if self.facility_type == "Settlement":
+            if self.economy in {"Agriculture", "Extraction", "Industrial", "Military"}:
+                return " / ".join((
+                    "Settlement",
+                    "Tier 1",
+                    self.economy,
+                    f"Tier {self.tier}",
+                    self.name,
+                ))
+            if self.economy in {"Research Bio", "Tourism"}:
+                return " / ".join((
+                    "Settlement",
+                    "Tier 2",
+                    self.economy,
+                    self.name,
+                ))
+
         pieces = [self.facility_type, f"Tier {self.tier}"]
         if self.category:
             pieces.append(self.category)
@@ -336,6 +359,22 @@ class ColonisationCatalog:
             result.append(facility)
         return result
 
+    def stage_target_facilities(self, stage: dict[str, Any]) -> list[FacilityRef]:
+        """Compact capability subset used by Goal-Directed Expansion."""
+        ids = stage.get("target_facility_ids") or stage.get("facility_ids") or []
+        result: list[FacilityRef] = []
+        seen: set[tuple[str, str, int, str, str]] = set()
+        for facility_id in ids:
+            facility = self.facilities.get(str(facility_id))
+            if facility is None:
+                continue
+            signature = self.functional_signature(facility)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            result.append(facility)
+        return result
+
     def ordered_buildout_stages(
         self,
         primary_goal: str,
@@ -402,6 +441,63 @@ class ColonisationCatalog:
 
         ranked.sort()
         return [stage for _score, _name, stage in ranked]
+
+    def targeted_buildout_stages(
+        self,
+        primary_goal: str,
+        secondary_goal: str,
+        known_facilities: list[FacilityRef],
+    ) -> list[dict[str, Any]]:
+        """Return only post-goal stages that materially support the selected use.
+
+        Full system build-out deliberately pursues every useful category.  The
+        normal Observatory workflow is different: get the system good enough for
+        the commander's selected purpose, then stop.  Each stage therefore has a
+        practical ``target_count`` smaller than its full catalog where appropriate.
+        Only stages reasonably close to the best current score are returned, so a
+        mining/tritium colony does not suddenly queue tourism and military work.
+        """
+
+        ranked = self.ordered_buildout_stages(
+            primary_goal, secondary_goal, known_facilities
+        )
+        known_signatures = {
+            self.functional_signature(facility) for facility in known_facilities
+        }
+        candidates: list[dict[str, Any]] = []
+        for stage in ranked:
+            target_facilities = self.stage_target_facilities(stage)
+            target_count = len(target_facilities)
+            target_satisfied = sum(
+                1 for facility in target_facilities
+                if self.functional_signature(facility) in known_signatures
+            )
+            stage["target_count"] = target_count
+            stage["target_satisfied"] = target_satisfied
+            stage["target_status"] = (
+                "Complete" if target_satisfied >= target_count else
+                "In progress" if target_satisfied else
+                "Not started"
+            )
+            if target_count <= 0 or target_satisfied >= target_count:
+                continue
+            if stage.get("targeted", True) is False:
+                continue
+            candidates.append(stage)
+
+        if not candidates:
+            return []
+
+        best_score = max(int(stage.get("score", 0) or 0) for stage in candidates)
+        # Relative threshold keeps closely related capabilities together without
+        # wandering into unrelated late-game categories.  The absolute floor
+        # prevents very weak stages from appearing just because everything else
+        # is already complete.
+        score_floor = max(100, int(best_score * 0.45))
+        return [
+            stage for stage in candidates
+            if int(stage.get("score", 0) or 0) >= score_floor
+        ]
 
     def combined_goal_steps(
         self,

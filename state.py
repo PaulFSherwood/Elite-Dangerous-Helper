@@ -114,6 +114,8 @@ class CommanderState:
     # baseline plus CargoTransfer journal deltas.
     ship_inventory: dict[str, int] = field(default_factory=dict)
     ship_inventory_known: bool = False
+    ship_inventory_last_delta_timestamp: str = ""
+    ship_inventory_last_snapshot_timestamp: str = ""
     carrier_inventory: dict[str, int] = field(default_factory=dict)
     carrier_inventory_known: bool = False
     carrier_known_commodities: set[str] = field(default_factory=set)
@@ -121,6 +123,10 @@ class CommanderState:
     carrier_last_event_fingerprint: str = ""
     owned_carrier_id: Optional[int] = None
     market_sources: dict[str, str] = field(default_factory=dict)
+    # Known commodity markets grouped by system.  The generic market_sources map
+    # is the most recent purchase/legacy source; this map lets Construction prefer
+    # a station inside the colony system without losing that local source later.
+    market_sources_by_system: dict[str, dict[str, str]] = field(default_factory=dict)
 
     live_updates_enabled: bool = False
     seen_scan_body_ids: set[int] = field(default_factory=set)

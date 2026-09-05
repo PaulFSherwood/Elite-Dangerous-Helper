@@ -886,7 +886,7 @@
       "id": "settlement_medium_agricultural_settlement_picumnus",
       "name": "Picumnus",
       "facility_type": "Settlement",
-      "category": "Medium Agricultural Settlement",
+      "category": "Small Agricultural Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Agriculture",
@@ -912,14 +912,16 @@
       "notes": "",
       "aliases": [
         "Medium Agricultural Settlement / Picumnus",
-        "Medium Agricultural Settlement"
+        "Medium Agricultural Settlement",
+        "Picumnus",
+        "Small Agricultural Settlement"
       ]
     },
     {
       "id": "settlement_medium_agricultural_settlement_annona",
       "name": "Annona",
       "facility_type": "Settlement",
-      "category": "Medium Agricultural Settlement",
+      "category": "Small Agricultural Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Agriculture",
@@ -945,7 +947,9 @@
       "notes": "",
       "aliases": [
         "Medium Agricultural Settlement / Annona",
-        "Medium Agricultural Settlement"
+        "Medium Agricultural Settlement",
+        "Annona",
+        "Small Agricultural Settlement"
       ]
     },
     {
@@ -1051,7 +1055,7 @@
       "id": "settlement_medium_extraction_settlement_mantus",
       "name": "Mantus",
       "facility_type": "Settlement",
-      "category": "Medium Mining Settlement",
+      "category": "Small Mining Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Extraction",
@@ -1077,14 +1081,16 @@
       "notes": "",
       "aliases": [
         "Medium Mining Settlement / Mantus",
-        "Medium Mining Settlement"
+        "Medium Mining Settlement",
+        "Mantus",
+        "Small Mining Settlement"
       ]
     },
     {
       "id": "settlement_medium_extraction_settlement_orcus",
       "name": "Orcus",
       "facility_type": "Settlement",
-      "category": "Medium Mining Settlement",
+      "category": "Small Mining Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Extraction",
@@ -1110,7 +1116,9 @@
       "notes": "",
       "aliases": [
         "Medium Mining Settlement / Orcus",
-        "Medium Mining Settlement"
+        "Medium Mining Settlement",
+        "Orcus",
+        "Small Mining Settlement"
       ]
     },
     {
@@ -1214,9 +1222,9 @@
     },
     {
       "id": "settlement_medium_industrial_settlement_meteope",
-      "name": "Meteope",
+      "name": "Metope",
       "facility_type": "Settlement",
-      "category": "Medium Industrial Settlement",
+      "category": "Small Industrial Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
@@ -1243,14 +1251,16 @@
       "aliases": [
         "Medium Industrial Settlement / Meteope",
         "Medium Industrial Settlement",
-        "Metope"
+        "Metope",
+        "Meteope",
+        "Small Industrial Settlement"
       ]
     },
     {
       "id": "settlement_medium_industrial_settlement_palici",
       "name": "Palici",
       "facility_type": "Settlement",
-      "category": "Medium Industrial Settlement",
+      "category": "Small Industrial Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
@@ -1276,14 +1286,16 @@
       "notes": "",
       "aliases": [
         "Medium Industrial Settlement / Palici",
-        "Medium Industrial Settlement"
+        "Medium Industrial Settlement",
+        "Palici",
+        "Small Industrial Settlement"
       ]
     },
     {
       "id": "settlement_medium_industrial_settlement_minthe",
       "name": "Minthe",
       "facility_type": "Settlement",
-      "category": "Medium Industrial Settlement",
+      "category": "Small Industrial Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Industrial",
@@ -1309,7 +1321,9 @@
       "notes": "",
       "aliases": [
         "Medium Industrial Settlement / Minthe",
-        "Medium Industrial Settlement"
+        "Medium Industrial Settlement",
+        "Minthe",
+        "Small Industrial Settlement"
       ]
     },
     {
@@ -1382,7 +1396,7 @@
       "id": "settlement_medium_military_settlement_bellona",
       "name": "Bellona",
       "facility_type": "Settlement",
-      "category": "Medium Military Settlement",
+      "category": "Small Military Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Military",
@@ -1408,14 +1422,16 @@
       "notes": "",
       "aliases": [
         "Medium Military Settlement / Bellona",
-        "Medium Military Settlement"
+        "Medium Military Settlement",
+        "Bellona",
+        "Small Military Settlement"
       ]
     },
     {
       "id": "settlement_medium_military_settlement_enyo",
       "name": "Enyo",
       "facility_type": "Settlement",
-      "category": "Medium Military Settlement",
+      "category": "Small Military Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Military",
@@ -1441,14 +1457,16 @@
       "notes": "",
       "aliases": [
         "Medium Military Settlement / Enyo",
-        "Medium Military Settlement"
+        "Medium Military Settlement",
+        "Enyo",
+        "Small Military Settlement"
       ]
     },
     {
       "id": "settlement_medium_military_settlement_polemos",
       "name": "Polemos",
       "facility_type": "Settlement",
-      "category": "Medium Military Settlement",
+      "category": "Small Military Settlement",
       "tier": 1,
       "site_type": "surface",
       "economy": "Military",
@@ -1474,7 +1492,9 @@
       "notes": "",
       "aliases": [
         "Medium Military Settlement / Polemos",
-        "Medium Military Settlement"
+        "Medium Military Settlement",
+        "Polemos",
+        "Small Military Settlement"
       ]
     },
     {
@@ -1683,7 +1703,7 @@
     },
     {
       "id": "settlement_medium_tourism_settlement_comos",
-      "name": "Comos",
+      "name": "Comus",
       "facility_type": "Settlement",
       "category": "Medium Tourism Settlement",
       "tier": 2,
@@ -1718,7 +1738,8 @@
       "aliases": [
         "Medium Tourism Settlement / Comos",
         "Medium Tourism Settlement",
-        "Comus"
+        "Comus",
+        "Comos"
       ]
     },
     {
@@ -4107,7 +4128,29 @@
         "reason": "Agricultural settlement support; +1 T2."
       }
     ],
-    "Custom Plan": []
+    "Custom Plan": [],
+    "Colonisation Supply Network": [
+      {
+        "facility_id": "planetary_outpost_hephaestus",
+        "reason": "Industrial market support for manufactured construction goods and Food Cartridges."
+      },
+      {
+        "facility_id": "settlement_small_mining_ourea",
+        "reason": "Extraction support for raw construction materials; +1 T2."
+      },
+      {
+        "facility_id": "hub_refinery_silenus",
+        "reason": "Refinery support for processed metals and mining supply."
+      },
+      {
+        "facility_id": "settlement_small_agricultural_settlement_consus",
+        "reason": "Agriculture support for local food supply; +1 T2."
+      },
+      {
+        "facility_id": "planetary_outpost_necessitas",
+        "reason": "High Tech market support for technology goods such as H.E. Suits; +1 T2."
+      }
+    ]
   },
   "secondary_goal_map": {
     "Expansion Support": "Expansion Materials Hub",
@@ -4118,7 +4161,8 @@
     "Research Capability": "Research and Technology Hub",
     "Tourism": "Tourism Hub",
     "Mining and Refining": "Mining and Refinery Hub",
-    "Balanced Services": "Balanced Colony"
+    "Balanced Services": "Balanced Colony",
+    "Local Construction Supplies": "Colonisation Supply Network"
   },
   "goal_profiles": {
     "Expansion Materials Hub": {
@@ -4229,6 +4273,19 @@
     "Custom Plan": {
       "economies": {},
       "orbital_support": []
+    },
+    "Colonisation Supply Network": {
+      "economies": {
+        "Industrial": 5,
+        "Extraction": 4,
+        "Refinery": 4,
+        "Agriculture": 5,
+        "High Tech": 5
+      },
+      "orbital_support": [
+        "installation_mining_outpost_euthenia",
+        "installation_space_farm_demeter"
+      ]
     }
   },
   "buildout_stages": [
@@ -4249,6 +4306,13 @@
         "outpost_commercial_outpost_plutus",
         "outpost_industrial_outpost_vulcan",
         "hub_industrial_molae"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_industrial_settlement_fontus",
+        "installation_mining_outpost_euthenia",
+        "outpost_commercial_outpost_plutus",
+        "hub_industrial_molae"
       ]
     },
     {
@@ -4267,6 +4331,14 @@
         "extraction_hub_tartarus",
         "hub_refinery_silenus",
         "starport_asteroid_base_ice"
+      ],
+      "target_count": 5,
+      "target_facility_ids": [
+        "settlement_small_mining_ourea",
+        "settlement_large_mining_aerecura",
+        "installation_mining_outpost_euthenia",
+        "extraction_hub_tartarus",
+        "hub_refinery_silenus"
       ]
     },
     {
@@ -4286,6 +4358,13 @@
         "installation_communication_station_pistis",
         "installation_research_station_astraeus",
         "outpost_scientific_outpost_prometheus",
+        "hub_scientific_athena"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "planetary_outpost_necessitas",
+        "installation_communication_station_pistis",
+        "installation_research_station_astraeus",
         "hub_scientific_athena"
       ]
     },
@@ -4307,6 +4386,13 @@
         "installation_medical_asclepius",
         "installation_government_harmonia",
         "hub_civilian_aegle"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_agricultural_settlement_consus",
+        "installation_space_farm_demeter",
+        "outpost_civilian_outpost_vesta",
+        "hub_civilian_aegle"
       ]
     },
     {
@@ -4324,6 +4410,13 @@
         "settlement_large_tourism_settlement_fufluns",
         "installation_tourist_hedone",
         "installation_space_bar_dionysus",
+        "hub_outpost_io"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "installation_satellite_hermes",
+        "settlement_small_tourism_settlement_aergia",
+        "installation_tourist_hedone",
         "hub_outpost_io"
       ]
     },
@@ -4343,6 +4436,13 @@
         "installation_military_vacuna",
         "outpost_military_outpost_nemesis",
         "hub_military_alala"
+      ],
+      "target_count": 4,
+      "target_facility_ids": [
+        "settlement_small_military_settlement_ioke",
+        "installation_relay_station_enodia",
+        "installation_security_station_dicaeosyne",
+        "installation_military_vacuna"
       ]
     },
     {
@@ -4360,6 +4460,12 @@
         "installation_satellite_hermes",
         "installation_relay_station_enodia",
         "outpost_scientific_outpost_prometheus",
+        "hub_exploration_tellus"
+      ],
+      "target_count": 3,
+      "target_facility_ids": [
+        "installation_communication_station_pistis",
+        "installation_satellite_hermes",
         "hub_exploration_tellus"
       ]
     },
@@ -4379,6 +4485,12 @@
         "outpost_civilian_outpost_vesta",
         "outpost_scientific_outpost_prometheus",
         "starport_coriolis_no_truss"
+      ],
+      "target_count": 3,
+      "target_facility_ids": [
+        "outpost_commercial_outpost_plutus",
+        "outpost_industrial_outpost_vulcan",
+        "outpost_civilian_outpost_vesta"
       ]
     },
     {
@@ -4391,7 +4503,10 @@
       "facility_ids": [
         "outpost_criminal_outpost_dysnomia",
         "installation_pirate_base_apate"
-      ]
+      ],
+      "target_count": 0,
+      "targeted": false,
+      "target_facility_ids": []
     }
   ]
 }

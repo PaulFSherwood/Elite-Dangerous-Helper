@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+from datetime import datetime, timedelta, timezone
 
 from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QColor
+from PyQt6.QtGui import QAction, QColor, QPen
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -20,9 +21,11 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QMenu,
     QPushButton,
     QProgressBar,
     QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -65,13 +68,44 @@ SECONDARY_GOALS = [
     "Tourism",
     "Mining and Refining",
     "Balanced Services",
+    "Local Construction Supplies",
 ]
 
 PLAN_SCOPES = [
     "Primary Goal Only",
     "Primary + Secondary Goals",
-    "Continue System Build-Out",
+    "Goal-Directed Expansion",
+    "Full System Build-Out",
 ]
+
+LOCAL_MARKET_SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 37
+
+
+class LocalMaterialRowDelegate(QStyledItemDelegate):
+    """Outline only actionable local-source rows.
+
+    Local-source knowledge is retained after a material is stocked or delivered,
+    but the strong purple cue is reserved for commodities the player still needs
+    to acquire.  This keeps completed rows visually quiet.
+    """
+
+    def paint(self, painter, option, index) -> None:  # type: ignore[override]
+        super().paint(painter, option, index)
+        if not bool(index.data(LOCAL_MARKET_SOURCE_ROLE)):
+            return
+
+        painter.save()
+        painter.setPen(QPen(QColor("#A855F7"), 2))
+        rect = option.rect.adjusted(1, 1, -1, -1)
+        painter.drawLine(rect.topLeft(), rect.topRight())
+        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        if index.column() == 0:
+            painter.drawLine(rect.topLeft(), rect.bottomLeft())
+        model = index.model()
+        if model is not None and index.column() == model.columnCount() - 1:
+            painter.drawLine(rect.topRight(), rect.bottomRight())
+        painter.restore()
+
 
 # Facility choices and goal recipes now live in data/colonisation_facilities.json.
 # This default catalog is still usable if the JSON is incomplete, and the data
@@ -140,17 +174,27 @@ class MaterialData:
     source: str = ""
 
     @property
+    def delivery_remaining(self) -> int:
+        """Tonnage Elite still requires at the construction depot."""
+        return max(0, int(self.required) - int(self.delivered))
+
+    @property
     def still_needed(self) -> int:
-        # "Still needed" means material that still has to be acquired. Cargo
-        # already on the ship or carrier is owned even though it is not yet
-        # counted as Delivered by the construction depot.
-        return max(
-            0,
-            int(self.required)
-            - int(self.delivered)
-            - int(self.ship)
-            - int(self.carrier),
-        )
+        # The Materials table uses "Still needed" to mean *still to deliver*,
+        # not still to buy. Ship/carrier stock is informational and must never
+        # make an unfinished depot row look complete.
+        return self.delivery_remaining
+
+    @property
+    def on_hand_for_build(self) -> int:
+        """Owned cargo relevant to this build, capped at the depot shortfall."""
+        owned = max(0, int(self.ship)) + max(0, int(self.carrier))
+        return min(self.delivery_remaining, owned)
+
+    @property
+    def acquisition_needed(self) -> int:
+        """Tonnage still to acquire after using current ship/carrier stock."""
+        return max(0, self.delivery_remaining - self.on_hand_for_build)
 
 @dataclass
 class FacilityData:
@@ -173,6 +217,10 @@ class FacilityData:
     provides_tier_3: int = 0
     confidence: str = "unverified"
     construction_started: bool = False
+    planned_location: str = ""
+    location_confirmed: bool = False
+    location_locked: bool = False
+    deviation_note: str = ""
 
     @classmethod
     def from_reference(cls, facility: FacilityRef, reason: str) -> "FacilityData":
@@ -218,7 +266,7 @@ class FacilityData:
 class PlanData:
     primary_goal: str = "Balanced Colony"
     secondary_goal: str = "None"
-    plan_scope: str = "Continue System Build-Out"
+    plan_scope: str = "Goal-Directed Expansion"
     phase: str = "Unknown"
     primary_port_complete: bool = False
     primary_port_name: str = "Primary Port"
@@ -245,6 +293,7 @@ class ConstructionPanel(QWidget):
     current_build_changed = pyqtSignal(str, str)
     system_lock_changed = pyqtSignal(str, bool)
     carrier_empty_baseline_requested = pyqtSignal(object)
+    activity_changed = pyqtSignal(bool)
 
     def __init__(self, settings: QSettings, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -263,6 +312,7 @@ class ConstructionPanel(QWidget):
         self.carrier_inventory_known = False
         self.carrier_known_commodities: set[str] = set()
         self.market_sources: dict[str, str] = {}
+        self.market_sources_by_system: dict[str, dict[str, str]] = {}
         self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
 
@@ -285,6 +335,20 @@ class ConstructionPanel(QWidget):
         self._build_ui()
         self._apply_plan()
 
+    def _run_user_action(self, action: Callable[[], None]) -> None:
+        """Run a player command with immediate visible activity feedback.
+
+        Planner actions can synchronously regenerate several tables. Paint the
+        warm/red busy background before that work starts so a long operation
+        never looks like a dead click.
+        """
+        self.activity_changed.emit(True)
+        QApplication.processEvents()
+        try:
+            action()
+        finally:
+            self.activity_changed.emit(False)
+
     def _key(self) -> str:
         safe = self.system_name.lower().replace("/", "_")
         return f"construction/plans/{safe}"
@@ -306,7 +370,17 @@ class ConstructionPanel(QWidget):
             self.plan = PlanData(**allowed)
             self.plan.sites = sites
             self.plan.facilities = facilities
-            changed = self._clean_saved_site_facilities()
+            changed = False
+            # v3.1.2 changes the broad default from "fill every useful category"
+            # to goal-directed expansion. Existing plans migrate to the safer
+            # targeted behavior; Full System Build-Out remains opt-in.
+            if self.plan.plan_scope == "Continue System Build-Out":
+                self.plan.plan_scope = "Goal-Directed Expansion"
+                changed = True
+            elif self.plan.plan_scope not in PLAN_SCOPES:
+                self.plan.plan_scope = "Goal-Directed Expansion"
+                changed = True
+            changed = self._clean_saved_site_facilities() or changed
             changed = self._refresh_plan_facility_metadata() or changed
             if changed:
                 self._save_plan()
@@ -359,6 +433,11 @@ class ConstructionPanel(QWidget):
             "point_cost_mode": facility.point_cost_mode,
             "preferred_site": facility.preferred_site,
             "construction_started": bool(facility.construction_started),
+            "planned_location": facility.planned_location,
+            "location_confirmed": bool(facility.location_confirmed),
+            "deviation_note": facility.deviation_note,
+            "tracked_at_utc": str(self.active_focus.get("tracked_at_utc", "") or "")
+            or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "reason": facility.reason,
             "confidence": facility.confidence,
             "material_key": self._material_key_for(facility),
@@ -392,6 +471,9 @@ class ConstructionPanel(QWidget):
             construction_tonnage=self._int_cell(self.active_focus.get("construction_tonnage", 0)),
             point_cost_mode=str(self.active_focus.get("point_cost_mode", "fixed") or "fixed"),
             construction_started=bool(self.active_focus.get("construction_started", False)),
+            planned_location=str(self.active_focus.get("planned_location", "")),
+            location_confirmed=bool(self.active_focus.get("location_confirmed", False)),
+            deviation_note=str(self.active_focus.get("deviation_note", "")),
             confidence=str(self.active_focus.get("confidence", "active_focus")),
         )
 
@@ -722,14 +804,45 @@ class ConstructionPanel(QWidget):
 
         facility = self._focus_facility()
         started_now = False
+        location_changed = False
+        completed_now = False
         if facility is not None and facility in self.plan.facilities:
+            # Do not let a cached depot from an older build "start" a newly
+            # tracked queue row. The player can simply revisit the real site to
+            # generate a fresh depot event if tracking began after construction.
             if facility.status == "Building now" and not facility.construction_started:
-                # Selecting a Focus in Observatory is only planning intent.  A
-                # live ColonisationConstructionDepot event is evidence that Elite
-                # has actually created the construction site and therefore spent
-                # its construction-point cost.
+                tracked_text = str(self.active_focus.get("tracked_at_utc", "") or "")
+                depot_text = str(depot.get("timestamp", "") or "")
+                if tracked_text and depot_text:
+                    try:
+                        tracked_dt = datetime.fromisoformat(tracked_text.replace("Z", "+00:00"))
+                        depot_dt = datetime.fromisoformat(depot_text.replace("Z", "+00:00"))
+                        if depot_dt < tracked_dt - timedelta(seconds=5):
+                            return
+                    except ValueError:
+                        pass
+
+                # Selecting a tracked build is only planning intent. A fresh
+                # ColonisationConstructionDepot event proves Elite actually made
+                # the site and spent its point cost. Its body is authoritative.
+                location_changed = self._record_actual_location(
+                    facility, str(depot.get("body", "") or "")
+                )
                 facility.construction_started = True
                 started_now = True
+            elif facility.status == "Building now" and facility.construction_started:
+                location_changed = self._record_actual_location(
+                    facility, str(depot.get("body", "") or "")
+                )
+
+            if bool(depot.get("complete", False)) and facility.status == "Building now":
+                facility.status = "Complete"
+                facility.construction_started = True
+                facility.location_confirmed = True
+                completed_now = True
+                if self.plan.current_build == facility.role:
+                    self.plan.current_build = "Not selected"
+                    self.plan.current_location = "Not selected"
         saved_rows = self._stored_materials_for(facility, include_live=False)
         saved_sources = {
             commodity_key(row.commodity): row.source
@@ -782,14 +895,23 @@ class ConstructionPanel(QWidget):
         # The monitor calls this on every construction-mode refresh.  Persist and
         # repaint only when Elite actually changed the depot snapshot (or when the
         # first depot event proves that construction started).
-        if facility is not None and resources and (depot_changed or started_now):
+        if facility is not None and resources and (depot_changed or started_now or location_changed or completed_now):
             key = self._material_key_for(facility)
             self.plan.materials_by_build[key] = [self._material_dict(row) for row in resources]
             self._save_plan()
-            self._save_active_focus_record(facility, resources)
+            if not completed_now:
+                self._save_active_focus_record(facility, resources)
 
-        if started_now:
+        if completed_now:
+            self.active_focus = {}
+            self.settings.remove("construction/active_focus")
             self._save_plan()
+            self._regenerate_facilities()
+            self._render_queue()
+            self._update_overview_status()
+        elif started_now or location_changed:
+            self._save_plan()
+            self._save_active_focus_record(facility, resources)
             self._render_queue()
             self._update_overview_status()
 
@@ -804,6 +926,7 @@ class ConstructionPanel(QWidget):
         carrier_inventory_known: bool,
         carrier_known_commodities: set[str],
         market_sources: dict[str, str],
+        market_sources_by_system: dict[str, dict[str, str]],
     ) -> None:
         """Apply live ship cargo, tracked carrier cargo, and learned market sources."""
         next_ship = {
@@ -826,6 +949,18 @@ class ConstructionPanel(QWidget):
             for name, location in (market_sources or {}).items()
             if commodity_key(name) and str(location).strip()
         }
+        next_sources_by_system: dict[str, dict[str, str]] = {}
+        for name, systems in (market_sources_by_system or {}).items():
+            key = commodity_key(name)
+            if not key or not isinstance(systems, dict):
+                continue
+            cleaned = {
+                str(system).strip(): str(station).strip()
+                for system, station in systems.items()
+                if str(system).strip() and str(station).strip()
+            }
+            if cleaned:
+                next_sources_by_system[key] = cleaned
         next_known = bool(carrier_inventory_known)
         next_ship_known = bool(ship_inventory_known)
 
@@ -835,6 +970,7 @@ class ConstructionPanel(QWidget):
             and next_inventory == self.carrier_inventory
             and next_known_commodities == self.carrier_known_commodities
             and next_sources == self.market_sources
+            and next_sources_by_system == self.market_sources_by_system
             and next_known == self.carrier_inventory_known
         ):
             return
@@ -844,6 +980,7 @@ class ConstructionPanel(QWidget):
         self.carrier_inventory = next_inventory
         self.carrier_known_commodities = next_known_commodities
         self.market_sources = next_sources
+        self.market_sources_by_system = next_sources_by_system
         self.carrier_inventory_known = next_known
         self._render_materials()
 
@@ -885,12 +1022,18 @@ class ConstructionPanel(QWidget):
         self.tabs.addTab(self._build_materials_tab(), "Materials")
         outer.addWidget(self.tabs, stretch=1)
 
-        self.edit_button.clicked.connect(lambda: self.set_editing(True))
-        self.cancel_button.clicked.connect(self.cancel_edits)
-        self.save_button.clicked.connect(self.save_edits)
-        self.primary_combo.currentTextChanged.connect(self._preview_queue)
-        self.secondary_combo.currentTextChanged.connect(self._preview_queue)
-        self.plan_scope_combo.currentTextChanged.connect(self._preview_queue)
+        self.edit_button.clicked.connect(lambda: self._run_user_action(lambda: self.set_editing(True)))
+        self.cancel_button.clicked.connect(lambda: self._run_user_action(self.cancel_edits))
+        self.save_button.clicked.connect(lambda: self._run_user_action(self.save_edits))
+        self.primary_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
+        self.secondary_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
+        self.plan_scope_combo.currentTextChanged.connect(
+            lambda text: self._run_user_action(lambda: self._preview_queue(text))
+        )
 
     def _box(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
@@ -933,7 +1076,9 @@ class ConstructionPanel(QWidget):
         self.overview_workflow_hint.setWordWrap(True)
         self.overview_edit_button = QPushButton("Edit Plan")
         self.overview_edit_button.setObjectName("constructionPrimaryAction")
-        self.overview_edit_button.clicked.connect(lambda: self.set_editing(True))
+        self.overview_edit_button.clicked.connect(
+            lambda: self._run_user_action(lambda: self.set_editing(True))
+        )
 
         self.primary_combo = QComboBox()
         self.primary_combo.addItems(PRIMARY_GOALS)
@@ -1050,7 +1195,7 @@ class ConstructionPanel(QWidget):
         c.addWidget(self.progress)
         self.undo_focus_button = QPushButton("Undo Build Selection")
         self.undo_focus_button.setToolTip("Restore the previously tracked build if this one was selected by mistake.")
-        self.undo_focus_button.clicked.connect(self.undo_focus_change)
+        self.undo_focus_button.clicked.connect(lambda: self._run_user_action(self.undo_focus_change))
         c.addWidget(self.undo_focus_button)
         c.addStretch()
 
@@ -1069,7 +1214,9 @@ class ConstructionPanel(QWidget):
         n.addWidget(self.next_reason_value)
         self.set_next_current_button = QPushButton("Track NEXT Build")
         self.set_next_current_button.setToolTip("Track the recommended build for materials. This does not start construction in Elite.")
-        self.set_next_current_button.clicked.connect(self.set_recommendation_as_current)
+        self.set_next_current_button.clicked.connect(
+            lambda: self._run_user_action(self.set_recommendation_as_current)
+        )
         n.addWidget(self.set_next_current_button)
         n.addStretch()
 
@@ -1141,7 +1288,9 @@ class ConstructionPanel(QWidget):
         self.add_existing_facility_button.setToolTip(
             "Select a body row, then choose a facility already completed in this system. No exact typing required."
         )
-        self.add_existing_facility_button.clicked.connect(self.add_existing_facility_to_selected_site)
+        self.add_existing_facility_button.clicked.connect(
+            lambda: self._run_user_action(self.add_existing_facility_to_selected_site)
+        )
         sites_actions.addWidget(self.add_existing_facility_button)
         self.sites_edit_note = QLabel("Select a body first. You can still edit the Builds column manually if needed.")
         self.sites_edit_note.setObjectName("constructionMuted")
@@ -1220,6 +1369,8 @@ class ConstructionPanel(QWidget):
             queue_header.resizeSection(column, width)
         self.queue_table.verticalHeader().setVisible(False)
         self.queue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.queue_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.queue_table.customContextMenuRequested.connect(self._show_queue_context_menu)
         layout.addWidget(self.queue_table)
 
         actions = QHBoxLayout()
@@ -1234,14 +1385,20 @@ class ConstructionPanel(QWidget):
             "Fallback only: use this if Elite/journal completion was not detected automatically."
         )
         self.queue_skip_button = QPushButton("Skip Selected")
-        self.queue_next_button.clicked.connect(self.set_recommendation_as_current)
-        self.queue_focus_button.clicked.connect(self.set_selected_queue_as_current)
-        self.queue_complete_button.clicked.connect(self.mark_selected_queue_complete)
-        self.queue_skip_button.clicked.connect(self.skip_selected_queue_item)
+        self.queue_location_button = QPushButton("Change Location…")
+        self.queue_location_button.setToolTip(
+            "Correct a planned or actual body/slot. Observatory validates surface/orbit type and replans around the change."
+        )
+        self.queue_next_button.clicked.connect(lambda: self._run_user_action(self.set_recommendation_as_current))
+        self.queue_focus_button.clicked.connect(lambda: self._run_user_action(self.set_selected_queue_as_current))
+        self.queue_complete_button.clicked.connect(lambda: self._run_user_action(self.mark_selected_queue_complete))
+        self.queue_skip_button.clicked.connect(lambda: self._run_user_action(self.skip_selected_queue_item))
+        self.queue_location_button.clicked.connect(lambda: self._run_user_action(self.change_selected_queue_location))
         actions.addWidget(self.queue_next_button)
         actions.addWidget(self.queue_focus_button)
         actions.addWidget(self.queue_complete_button)
         actions.addWidget(self.queue_skip_button)
+        actions.addWidget(self.queue_location_button)
         actions.addStretch()
         layout.addLayout(actions)
         return page
@@ -1287,15 +1444,21 @@ class ConstructionPanel(QWidget):
         self.set_carrier_empty_button.setToolTip(
             "Use after the carrier has zero of every commodity listed for this construction build."
         )
-        self.set_carrier_empty_button.clicked.connect(self.mark_tracked_carrier_empty)
+        self.set_carrier_empty_button.clicked.connect(
+            lambda: self._run_user_action(self.mark_tracked_carrier_empty)
+        )
         self.ship_capacity_spin = QSpinBox()
         self.ship_capacity_spin.setRange(1, 50000)
         self.ship_capacity_spin.setSuffix(" t")
         self.add_material_button = QPushButton("Add Material Row")
         self.remove_material_button = QPushButton("Remove Selected")
-        self.add_material_button.clicked.connect(self.add_material_row)
-        self.remove_material_button.clicked.connect(self.remove_selected_material_row)
-        self.ship_capacity_spin.valueChanged.connect(lambda _value: self._render_materials())
+        self.add_material_button.clicked.connect(lambda: self._run_user_action(self.add_material_row))
+        self.remove_material_button.clicked.connect(
+            lambda: self._run_user_action(self.remove_selected_material_row)
+        )
+        self.ship_capacity_spin.valueChanged.connect(
+            lambda _value: self._run_user_action(self._render_materials)
+        )
         toolbar.addWidget(self.logistics_status_label)
         toolbar.addWidget(self.set_carrier_empty_button)
         toolbar.addStretch()
@@ -1304,6 +1467,13 @@ class ConstructionPanel(QWidget):
         toolbar.addWidget(self.add_material_button)
         toolbar.addWidget(self.remove_material_button)
         layout.addLayout(toolbar)
+
+        self.material_source_legend = QLabel(
+            "Active shortages: Purple outline = local source • Blue source = last purchase • "
+            "Amber = unknown • Stocked/completed rows are muted; source is retained"
+        )
+        self.material_source_legend.setObjectName("constructionWorkflowHint")
+        layout.addWidget(self.material_source_legend)
 
         self.materials_table = QTableWidget(0, 8)
         self.materials_table.setHorizontalHeaderLabels([
@@ -1314,6 +1484,7 @@ class ConstructionPanel(QWidget):
         header.setSortIndicatorShown(True)
         self.materials_table.verticalHeader().setVisible(False)
         self.materials_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.materials_table.setItemDelegate(LocalMaterialRowDelegate(self.materials_table))
         self.materials_table.itemChanged.connect(self.on_material_item_changed)
         self.materials_table.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
         self.copy_material_source_action = QAction("Copy Material Source", self.materials_table)
@@ -1430,6 +1601,39 @@ class ConstructionPanel(QWidget):
             and ("*" in self.carrier_known_commodities or key in self.carrier_known_commodities)
         )
 
+    @staticmethod
+    def _normalise_system_name(name: str) -> str:
+        return " ".join(str(name or "").split()).casefold()
+
+    def _local_market_source(self, key: str) -> str:
+        """Return a known station selling this commodity in the build system."""
+        wanted = self._normalise_system_name(self.focus_system_name())
+        if not wanted or wanted == "unknown system":
+            return ""
+        systems = self.market_sources_by_system.get(key, {})
+        for system, station in systems.items():
+            if self._normalise_system_name(system) == wanted and str(station).strip():
+                return str(station).strip()
+        return ""
+
+    def _material_source_info(self, key: str, saved_source: str) -> tuple[str, bool, bool]:
+        """Choose source text with local colony markets taking priority.
+
+        Returns (source, is_local, is_auto_external).  A known local market stays
+        pinned even after buying the same commodity elsewhere.  Otherwise the
+        latest MarketBuy source replaces stale automatic/legacy source names.
+        """
+        local = self._local_market_source(key) if key else ""
+        if local:
+            return local, True, False
+
+        recent = str(self.market_sources.get(key, "") or "").strip() if key else ""
+        if recent:
+            return recent, False, True
+
+        source = str(saved_source or "").strip()
+        return source, False, False
+
     def _apply_logistics_overlays(self, rows: list[MaterialData]) -> list[MaterialData]:
         overlaid: list[MaterialData] = []
         for row in rows:
@@ -1441,9 +1645,7 @@ class ConstructionPanel(QWidget):
                 else 0
             )
 
-            source = row.source
-            if key and self._is_placeholder_source(source):
-                source = self.market_sources.get(key, source)
+            source, _is_local, _is_auto_external = self._material_source_info(key, row.source)
 
             overlaid.append(MaterialData(
                 commodity=row.commodity,
@@ -1546,9 +1748,11 @@ class ConstructionPanel(QWidget):
         # The source/location field is intentionally editable while the plan is
         # locked.  Save it immediately so a pasted station is not lost.
         if item.column() == 7:
-            self._store_material_edits()
-            self._save_plan()
-            self._render_materials()
+            def save_source_change() -> None:
+                self._store_material_edits()
+                self._save_plan()
+                self._render_materials()
+            self._run_user_action(save_source_change)
 
     def copy_selected_material_cell(self) -> None:
         item = self.materials_table.currentItem()
@@ -1623,39 +1827,45 @@ class ConstructionPanel(QWidget):
         required_total = sum(max(0, row.required) for row in rows)
         delivered_total = sum(min(max(0, row.delivered), max(0, row.required)) for row in rows)
         progress = int((delivered_total * 100) / required_total) if required_total else 0
-        needed = sorted(
-            (row for row in rows if row.still_needed > 0),
-            key=lambda row: row.still_needed,
+        delivery_needed = sorted(
+            (row for row in rows if row.delivery_remaining > 0),
+            key=lambda row: row.delivery_remaining,
+            reverse=True,
+        )
+        acquisition_needed = sorted(
+            (row for row in delivery_needed if row.acquisition_needed > 0),
+            key=lambda row: row.acquisition_needed,
             reverse=True,
         )
 
-        if needed:
-            material = needed[0]
+        if acquisition_needed:
+            material = acquisition_needed[0]
             capacity = max(1, int(self.plan.ship_capacity_tons or 1))
-            trips = (material.still_needed + capacity - 1) // capacity
+            trips = (material.delivery_remaining + capacity - 1) // capacity
             source = material.source.strip() if material.source else "Paste Location"
             if self._is_placeholder_source(source):
                 source = "Paste Location"
             return (
-                f"Deliver {material.commodity}",
-                f"{material.still_needed:,} t left • {trips} ship trip{'s' if trips != 1 else ''}",
+                f"Haul {material.commodity}",
+                f"{material.delivery_remaining:,} t still needs depot delivery • "
+                f"{material.acquisition_needed:,} t still needs to be acquired • "
+                f"{trips} delivery trip{'s' if trips != 1 else ''}",
                 source,
                 progress,
             )
 
-        if rows:
-            remaining_delivery = sum(
-                max(0, int(row.required) - int(row.delivered)) for row in rows
+        if delivery_needed:
+            remaining_delivery = sum(row.delivery_remaining for row in delivery_needed)
+            stocked_for_build = sum(row.on_hand_for_build for row in delivery_needed)
+            return (
+                "Deliver stocked materials",
+                f"{remaining_delivery:,} t still needs depot delivery • "
+                f"{stocked_for_build:,} t of that amount is on ship/carrier",
+                "No source needed",
+                progress,
             )
-            if remaining_delivery > 0:
-                stocked = sum(max(0, int(row.ship) + int(row.carrier)) for row in rows)
-                return (
-                    "Deliver stocked materials",
-                    f"{remaining_delivery:,} t still needs depot delivery • "
-                    f"{stocked:,} t currently on ship/carrier",
-                    "No source needed",
-                    progress,
-                )
+
+        if rows:
             return (
                 "Material delivery complete",
                 "Return to the construction site and verify the build completes.",
@@ -1669,6 +1879,37 @@ class ConstructionPanel(QWidget):
             "Paste Location",
             0,
         )
+
+    def _material_source_visual_kind(self, source: str) -> str:
+        """Return a compact UI classification for a displayed material source."""
+        text = str(source or "").strip()
+        if self._is_placeholder_source(text):
+            return "missing"
+        if text == "No source needed":
+            return "none"
+
+        wanted = self._normalise_system_name(self.focus_system_name())
+        if wanted and wanted != "unknown system":
+            for systems in self.market_sources_by_system.values():
+                if not isinstance(systems, dict):
+                    continue
+                for system, station in systems.items():
+                    if (
+                        self._normalise_system_name(system) == wanted
+                        and str(station or "").strip() == text
+                    ):
+                        return "local"
+
+        if any(str(station or "").strip() == text for station in self.market_sources.values()):
+            return "external"
+        return "manual"
+
+    @staticmethod
+    def _apply_source_pill_kind(label: QLabel, kind: str, missing: bool) -> None:
+        label.setProperty("sourceKind", kind)
+        label.setProperty("missing", "true" if missing else "false")
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     def _update_overview_status(self) -> None:
         if not hasattr(self, "overview_build_system_value"):
@@ -1718,17 +1959,14 @@ class ConstructionPanel(QWidget):
         self.next_action_source.setText(source)
         source_available = not self._is_placeholder_source(source) and source != "No source needed"
         source_missing = not source_available and source != "No source needed"
-        self.next_action_source.setProperty("missing", "true" if source_missing else "false")
-        self.next_action_source.style().unpolish(self.next_action_source)
-        self.next_action_source.style().polish(self.next_action_source)
+        source_kind = self._material_source_visual_kind(source)
+        self._apply_source_pill_kind(self.next_action_source, source_kind, source_missing)
         self.copy_next_source_button.setEnabled(source_available)
         if hasattr(self, "next_haul_title"):
             self.next_haul_title.setText(f"NEXT HAUL: {action_title}")
             self.next_haul_detail.setText(action_detail)
             self.next_haul_source.setText(source)
-            self.next_haul_source.setProperty("missing", "true" if source_missing else "false")
-            self.next_haul_source.style().unpolish(self.next_haul_source)
-            self.next_haul_source.style().polish(self.next_haul_source)
+            self._apply_source_pill_kind(self.next_haul_source, source_kind, source_missing)
             self.copy_haul_source_button.setEnabled(source_available)
 
     def copy_next_action_source(self) -> None:
@@ -1805,6 +2043,12 @@ class ConstructionPanel(QWidget):
                     left = material.still_needed
                     trips = (left + capacity - 1) // capacity if left else 0
                     source = material.source.strip() if material.source else "Paste Location"
+                    local_source = self._local_market_source(key)
+                    is_local_source = bool(local_source and source == local_source)
+                    auto_external_source = str(self.market_sources.get(key, "") or "").strip()
+                    is_auto_external = bool(
+                        not is_local_source and auto_external_source and source == auto_external_source
+                    )
                     ship_text = f"{material.ship:,}" if self.ship_inventory_known else "Update pending"
                     carrier_text = f"{material.carrier:,}" if carrier_known else "Update pending"
                     values = [
@@ -1832,9 +2076,15 @@ class ConstructionPanel(QWidget):
                         if not editable:
                             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-                        if left > 0 and col in (0, 5, 6):
-                            item.setForeground(QColor("#ffb000"))
-                        elif left == 0:
+                        if left > 0:
+                            # An unfinished depot row stays visually active even
+                            # when the exact shortfall is already on ship/carrier.
+                            # Required vs Delivered is the completion authority.
+                            item.setBackground(QColor("#241D0D"))
+                            item.setForeground(QColor("#E6EDF3"))
+                            if col in (0, 5, 6):
+                                item.setForeground(QColor("#ffb000"))
+                        else:
                             item.setForeground(QColor("#6F7B85"))
                             item.setBackground(QColor("#101A22"))
 
@@ -1843,14 +2093,61 @@ class ConstructionPanel(QWidget):
                         if col == 3 and not self.ship_inventory_known:
                             item.setForeground(QColor("#F59E0B"))
 
+                        source_actionable = material.acquisition_needed > 0
+                        local_actionable = bool(is_local_source and source_actionable)
+                        item.setData(LOCAL_MARKET_SOURCE_ROLE, local_actionable)
+                        if is_local_source:
+                            if source_actionable:
+                                item.setToolTip(
+                                    f"Available locally in {self.focus_system_name()} at {local_source}."
+                                )
+                            else:
+                                item.setToolTip(
+                                    f"Known local source retained: {local_source}. "
+                                    "No additional purchase is needed for this build."
+                                )
+
                         if col == 7:
-                            if self._is_placeholder_source(value):
+                            # Source colours are action cues, not permanent labels.  Once the
+                            # required amount is already on hand or delivered, keep the useful
+                            # station name but let the row fall back to the normal muted styling.
+                            if not source_actionable:
+                                if self._is_placeholder_source(value):
+                                    item.setText("Paste Location")
+                                item.setBackground(QColor("#101A22") if left == 0 else QColor("#241D0D"))
+                                item.setForeground(QColor("#6F7B85") if left == 0 else QColor("#AAB4BE"))
+                                if not self._is_placeholder_source(value):
+                                    item.setToolTip(
+                                        f"Source retained for reference: {value}. "
+                                        "No additional purchase is needed for this build."
+                                    )
+                            elif self._is_placeholder_source(value):
                                 item.setText("Paste Location")
                                 item.setBackground(QColor("#493710"))
                                 item.setForeground(QColor("#F59E0B"))
+                                item.setToolTip(
+                                    "No source is known yet. Visit a commodity market or paste a location."
+                                )
+                            elif is_local_source:
+                                item.setBackground(QColor("#211A2E"))
+                                item.setForeground(QColor("#D8B4FE"))
+                                item.setToolTip(
+                                    f"LOCAL SOURCE • {self.focus_system_name()} • {source}. "
+                                    "Local sources stay preferred even if you later buy elsewhere."
+                                )
+                            elif is_auto_external:
+                                item.setBackground(QColor("#123047"))
+                                item.setForeground(QColor("#BAE6FD"))
+                                item.setToolTip(
+                                    "Last station where this commodity was bought. "
+                                    "This updates automatically on the next purchase unless a local source is known."
+                                )
                             else:
-                                item.setBackground(QColor("#5B21B6"))
-                                item.setForeground(QColor("#FFFFFF"))
+                                item.setBackground(QColor("#27313D"))
+                                item.setForeground(QColor("#E6EDF3"))
+                                item.setToolTip(
+                                    "Manual/legacy source. A local market or a future purchase can replace it."
+                                )
                         self.materials_table.setItem(row, col, item)
         finally:
             self._rendering_materials = False
@@ -2139,9 +2436,15 @@ class ConstructionPanel(QWidget):
     def _apply_plan(self) -> None:
         if not hasattr(self, "primary_combo"):
             return
-        self.primary_combo.setCurrentText(self.plan.primary_goal)
-        self.secondary_combo.setCurrentText(self.plan.secondary_goal)
-        self.plan_scope_combo.setCurrentText(self.plan.plan_scope)
+        for combo in (self.primary_combo, self.secondary_combo, self.plan_scope_combo):
+            combo.blockSignals(True)
+        try:
+            self.primary_combo.setCurrentText(self.plan.primary_goal)
+            self.secondary_combo.setCurrentText(self.plan.secondary_goal)
+            self.plan_scope_combo.setCurrentText(self.plan.plan_scope)
+        finally:
+            for combo in (self.primary_combo, self.secondary_combo, self.plan_scope_combo):
+                combo.blockSignals(False)
         self.phase_edit.setText(self.plan.phase)
         self.primary_port_check.setChecked(self.plan.primary_port_complete)
         self.primary_port_name_edit.setText(self.plan.primary_port_name)
@@ -2169,7 +2472,9 @@ class ConstructionPanel(QWidget):
         self.current_location_value.setText(display_location)
         self.concurrent_spin.setValue(self.plan.concurrent_limit)
         if hasattr(self, "ship_capacity_spin"):
+            self.ship_capacity_spin.blockSignals(True)
             self.ship_capacity_spin.setValue(self.plan.ship_capacity_tons or 1168)
+            self.ship_capacity_spin.blockSignals(False)
         self._render_sites()
         self._render_queue()
         self._render_materials()
@@ -3043,8 +3348,9 @@ class ConstructionPanel(QWidget):
 
         # Scope controls how far Observatory plans, not how many rows it is allowed
         # to return.  Primary-only stops after the primary objective.  The normal
-        # dual-goal scope includes both dropdowns.  Continue System Build-Out adds
-        # ranked development stages after those objectives are covered.
+        # dual-goal scope includes both dropdowns. Goal-Directed Expansion adds
+        # only strongly related supporting capabilities; Full System Build-Out
+        # remains available when the commander intentionally wants broad coverage.
         effective_secondary = secondary_goal
         if plan_scope == "Primary Goal Only":
             effective_secondary = "None"
@@ -3079,9 +3385,10 @@ class ConstructionPanel(QWidget):
             if previous.status in ("Complete", "Building now"):
                 generated.append(previous)
 
-        if plan_scope == "Continue System Build-Out":
+        if plan_scope in ("Goal-Directed Expansion", "Full System Build-Out"):
             self._append_system_buildout_rows(
-                generated, goal, effective_secondary, old_by_id, old_by_role
+                generated, goal, effective_secondary, old_by_id, old_by_role,
+                full_buildout=(plan_scope == "Full System Build-Out"),
             )
 
         self.plan.facilities = generated
@@ -3097,13 +3404,15 @@ class ConstructionPanel(QWidget):
         secondary_goal: str,
         old_by_id: dict[str, FacilityData],
         old_by_role: dict[str, FacilityData],
+        *,
+        full_buildout: bool = False,
     ) -> None:
-        """Extend the finite goal recipes into a substantial system plan.
+        """Extend selected goals with useful post-goal development.
 
-        No arbitrary facility-count ceiling is used.  The physical slot inventory
-        is the natural bound when it is known.  Each functional facility class is
-        added at most once during broad build-out; explicit primary/secondary
-        recipes can still request multiplicity where the goal genuinely needs it.
+        Goal-Directed Expansion adds only enough of the highest-value supporting
+        stages to give the system the capabilities it needs. Full System Build-Out
+        remains available for commanders who deliberately want broad category
+        coverage. Neither mode uses a fixed facility-count ceiling.
         """
 
         known_refs = list(self._physical_facility_references())
@@ -3144,15 +3453,27 @@ class ConstructionPanel(QWidget):
                 elif facility.preferred_site == "orbital" and orbital_remaining is not None:
                     orbital_remaining = max(0, orbital_remaining - 1)
 
-        stages = CATALOG.ordered_buildout_stages(
-            primary_goal, secondary_goal, known_refs
+        stages = (
+            CATALOG.ordered_buildout_stages(primary_goal, secondary_goal, known_refs)
+            if full_buildout
+            else CATALOG.targeted_buildout_stages(primary_goal, secondary_goal, known_refs)
         )
         for stage in stages:
             stage_name = str(stage.get("name", "System Development"))
             description = str(stage.get("description", "")).strip()
-            before_satisfied = int(stage.get("satisfied", 0) or 0)
             before_total = int(stage.get("total", 0) or 0)
-            for reference in CATALOG.stage_facilities(stage):
+            if full_buildout:
+                before_satisfied = int(stage.get("satisfied", 0) or 0)
+                target_total = before_total
+                stage_references = CATALOG.stage_facilities(stage)
+            else:
+                before_satisfied = int(stage.get("target_satisfied", 0) or 0)
+                target_total = int(stage.get("target_count", 0) or 0)
+                stage_references = CATALOG.stage_target_facilities(stage)
+            needed_for_stage = max(0, target_total - before_satisfied)
+            if needed_for_stage <= 0:
+                continue
+            for reference in stage_references:
                 signature = CATALOG.functional_signature(reference)
                 if signature in known_signatures:
                     continue
@@ -3164,8 +3485,8 @@ class ConstructionPanel(QWidget):
                         continue
 
                 reason = (
-                    f"System build-out — {stage_name}: "
-                    f"{before_satisfied}/{before_total} stage functions already present. "
+                    f"{'Full build-out' if full_buildout else 'Goal-directed expansion'} — {stage_name}: "
+                    f"{before_satisfied}/{target_total if not full_buildout else before_total} target functions already present. "
                     f"{description}"
                 ).strip()
                 previous = old_by_id.get(reference.id) or old_by_role.get(reference.display_name)
@@ -3183,6 +3504,9 @@ class ConstructionPanel(QWidget):
 
                 # Update the stage progress embedded in subsequent explanations.
                 before_satisfied = min(before_total, before_satisfied + 1)
+                needed_for_stage -= 1
+                if needed_for_stage <= 0:
+                    break
 
     @staticmethod
     def _is_port_reference(reference: FacilityRef) -> bool:
@@ -3288,15 +3612,21 @@ class ConstructionPanel(QWidget):
             return "Selected goals — primary incomplete"
         if plan_scope != "Primary Goal Only" and secondary is not None and secondary.get("status") != "Complete":
             return "Selected goals — secondary incomplete"
-        if plan_scope != "Continue System Build-Out":
+        if plan_scope in ("Primary Goal Only", "Primary + Secondary Goals"):
             return "Selected goals complete — ready to move on"
 
         known = self._completed_physical_references()
+        if plan_scope == "Goal-Directed Expansion":
+            ranked = CATALOG.targeted_buildout_stages(primary_goal, secondary_goal, known)
+            if not ranked:
+                return "Goal-directed expansion complete — system has the selected capabilities"
+            return f"Goal-Directed Expansion — next capability: {ranked[0].get('name', 'System Development')}"
+
         ranked = CATALOG.ordered_buildout_stages(primary_goal, secondary_goal, known)
         next_stage = next((stage for stage in ranked if stage.get("status") != "Complete"), None)
         if next_stage is None:
-            return "System build-out complete"
-        return f"System Build-Out — next stage: {next_stage.get('name', 'System Development')}"
+            return "Full system build-out complete"
+        return f"Full System Build-Out — next stage: {next_stage.get('name', 'System Development')}"
 
     def _related_bodies_for_facility(self, facility: FacilityData) -> set[str]:
         """Bodies already hosting a direct prerequisite/dependant.
@@ -3526,8 +3856,8 @@ class ConstructionPanel(QWidget):
         reserved: set[str] = set()
         for facility in self.plan.facilities:
             if (
-                facility.status in ("Complete", "Building now")
-                and self._location_is_real(facility.location)
+                self._location_is_real(facility.location)
+                and (facility.status in ("Complete", "Building now") or facility.location_locked)
             ):
                 reserved.add(facility.location)
                 continue
@@ -3671,8 +4001,10 @@ class ConstructionPanel(QWidget):
         needs_pending_work = primary_before.get("status") != "Complete"
         if plan_scope != "Primary Goal Only" and secondary_before is not None:
             needs_pending_work = needs_pending_work or secondary_before.get("status") != "Complete"
-        if plan_scope == "Continue System Build-Out":
-            needs_pending_work = needs_pending_work or phase_before != "System build-out complete"
+        if plan_scope == "Goal-Directed Expansion":
+            needs_pending_work = needs_pending_work or not phase_before.startswith("Goal-directed expansion complete")
+        elif plan_scope == "Full System Build-Out":
+            needs_pending_work = needs_pending_work or phase_before != "Full system build-out complete"
 
         if (
             goal != self.plan.primary_goal
@@ -3725,7 +4057,7 @@ class ConstructionPanel(QWidget):
                 self._queue_display_location(facility.location),
                 facility.preferred_site.title(),
                 facility.point_summary,
-                facility.reason,
+                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
                 facility.status,
                 block_reason if action == "BLOCKED" else action,
             ]
@@ -3735,7 +4067,7 @@ class ConstructionPanel(QWidget):
                 facility.location,
                 facility.preferred_site.title(),
                 facility.point_summary,
-                facility.reason,
+                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
                 facility.status,
                 block_reason if action == "BLOCKED" else action,
             ]
@@ -3796,6 +4128,55 @@ class ConstructionPanel(QWidget):
             self._render_sites()
         self._render_materials()
 
+    def _show_queue_context_menu(self, pos) -> None:
+        """Right-click shortcuts for the same Build Queue commands as the buttons."""
+        item = self.queue_table.itemAt(pos)
+        if item is not None:
+            self.queue_table.selectRow(item.row())
+
+        facility = self._selected_queue_facility()
+        menu = QMenu(self.queue_table)
+
+        track_selected = menu.addAction("Track Selected Build")
+        track_allowed = bool(
+            facility is not None
+            and facility.status == "Queued"
+            and not self._facility_block_reason(facility)
+        )
+        track_selected.setEnabled(track_allowed)
+        track_next = menu.addAction("Track NEXT Build")
+        track_next.setEnabled(self._next_buildable_facility() is not None)
+
+        menu.addSeparator()
+        change_location = menu.addAction("Change Location…")
+        mark_complete = menu.addAction("Mark Complete (manual)")
+        skip_selected = menu.addAction("Skip Selected")
+        change_location.setEnabled(facility is not None)
+        mark_complete.setEnabled(bool(facility is not None and facility.status in ("Queued", "Building now")))
+        skip_selected.setEnabled(bool(facility is not None and facility.status in ("Queued", "Building now")))
+
+        if self.plan.previous_current_build:
+            menu.addSeparator()
+            undo_tracking = menu.addAction("Undo Build Selection")
+        else:
+            undo_tracking = None
+
+        chosen = menu.exec(self.queue_table.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen == track_selected:
+            self._run_user_action(self.set_selected_queue_as_current)
+        elif chosen == track_next:
+            self._run_user_action(self.set_recommendation_as_current)
+        elif chosen == change_location:
+            self._run_user_action(self.change_selected_queue_location)
+        elif chosen == mark_complete:
+            self._run_user_action(self.mark_selected_queue_complete)
+        elif chosen == skip_selected:
+            self._run_user_action(self.skip_selected_queue_item)
+        elif undo_tracking is not None and chosen == undo_tracking:
+            self._run_user_action(self.undo_focus_change)
+
     def _selected_queue_facility(self) -> Optional[FacilityData]:
         row = self.queue_table.currentRow()
         if row < 0 or row >= len(self.plan.facilities):
@@ -3812,15 +4193,24 @@ class ConstructionPanel(QWidget):
         facility = self._selected_queue_facility()
         if facility is None:
             return
-        if facility.status == "Queued":
-            blocked = self._facility_block_reason(facility)
-            if blocked:
+        if facility.status != "Queued":
+            if facility.status == "Building now":
+                QMessageBox.information(self, "Already tracked", f"{facility.role} is already the tracked build.")
+            else:
                 QMessageBox.information(
                     self,
-                    "Facility is blocked",
-                    f"{facility.role}\n\n{blocked}",
+                    "Not a queued build",
+                    f"{facility.role} is {facility.status.lower()} and cannot be selected as the current build.",
                 )
-                return
+            return
+        blocked = self._facility_block_reason(facility)
+        if blocked:
+            QMessageBox.information(
+                self,
+                "Facility is blocked",
+                f"{facility.role}\n\n{blocked}",
+            )
+            return
         self._set_focus_facility(facility)
 
     def _set_focus_facility(self, facility: FacilityData) -> None:
@@ -3834,6 +4224,9 @@ class ConstructionPanel(QWidget):
         facility.construction_started = False
         self.plan.current_build = facility.role
         self.plan.current_location = facility.location
+        # A new tracking session needs a fresh timestamp so cached depot events
+        # from an older construction site cannot be mistaken for this build.
+        self.active_focus = {}
         self._save_plan()
         self._save_active_focus_record(facility)
         self._apply_plan()
@@ -3864,6 +4257,103 @@ class ConstructionPanel(QWidget):
             self._save_active_focus_record(restored)
         self._apply_plan()
 
+
+    def _next_actual_location_on_body(
+        self, body: str, preferred_site: str, facility: Optional[FacilityData] = None
+    ) -> str:
+        """Return the next physical slot label on one specific Elite body."""
+        prefix = "Surface" if preferred_site == "surface" else "Orbit"
+        highest = 0
+        for other in self.plan.facilities:
+            if other is facility or other.status not in ("Complete", "Building now"):
+                continue
+            location = str(other.location or "")
+            if not location.startswith(body + " — " + prefix + " "):
+                continue
+            try:
+                highest = max(highest, int(location.rsplit(" ", 1)[-1]))
+            except ValueError:
+                pass
+        site = next((row for row in self.plan.sites if row.body == body), None)
+        if site is not None:
+            used = site.surface_used if preferred_site == "surface" else site.orbital_used
+            highest = max(highest, int(used or 0))
+        return f"{body} — {prefix} {highest + 1}"
+
+    def _record_actual_location(self, facility: FacilityData, body: str) -> bool:
+        body = str(body or "").strip()
+        if not body or body.casefold().startswith("unknown"):
+            return False
+        planned_body = self._facility_body_from_location(facility.location)
+        if planned_body == body:
+            facility.location_confirmed = True
+            return False
+        old_location = facility.location
+        new_location = self._next_actual_location_on_body(body, facility.preferred_site, facility)
+        if not facility.planned_location:
+            facility.planned_location = old_location
+        facility.location = new_location
+        facility.location_confirmed = True
+        facility.location_locked = True
+        facility.deviation_note = (
+            f"Elite reports this build on {body}; Observatory originally planned {old_location}."
+        )
+        if self.plan.current_build == facility.role:
+            self.plan.current_location = new_location
+        site = next((row for row in self.plan.sites if row.body == body), None)
+        if site is not None:
+            try:
+                slot = int(new_location.rsplit(" ", 1)[-1])
+            except ValueError:
+                slot = 0
+            if facility.preferred_site == "surface":
+                site.surface_used = max(site.surface_used, slot)
+            else:
+                site.orbital_used = max(site.orbital_used, slot)
+        return True
+
+    def change_selected_queue_location(self) -> None:
+        facility = self._selected_queue_facility()
+        if facility is None:
+            return
+        eligible: list[str] = []
+        for site in self.plan.sites:
+            if facility.preferred_site == "surface":
+                if not site.landable:
+                    continue
+                if site.surface_total > 0 and site.surface_used >= site.surface_total:
+                    continue
+            else:
+                if site.orbital_total > 0 and site.orbital_used >= site.orbital_total:
+                    continue
+            eligible.append(site.body)
+        if not eligible:
+            QMessageBox.information(
+                self, "No compatible location",
+                "No compatible body/slot is currently available in Sites."
+            )
+            return
+        body, ok = QInputDialog.getItem(
+            self,
+            "Change build location",
+            f"Choose the body for:\n{facility.role}",
+            eligible,
+            0,
+            False,
+        )
+        if not ok or not body:
+            return
+        old_location = facility.location
+        new_location = self._next_actual_location_on_body(str(body), facility.preferred_site, facility)
+        if not facility.planned_location:
+            facility.planned_location = old_location
+        facility.location = new_location
+        facility.location_locked = True
+        facility.deviation_note = f"Location manually changed from {old_location} to {new_location}."
+        if self.plan.current_build == facility.role:
+            self.plan.current_location = new_location
+        self._save_plan()
+        self._apply_plan()
 
     def skip_selected_queue_item(self) -> None:
         facility = self._selected_queue_facility()
@@ -3914,18 +4404,22 @@ class ConstructionPanel(QWidget):
             return ("No focus build", "Trips —", "Source: —")
         rows = self._stored_materials_for(facility)
         capacity = max(1, int(self.plan.ship_capacity_tons or 1))
-        needed = [row for row in rows if row.still_needed > 0]
+        needed = [row for row in rows if row.delivery_remaining > 0]
         if not needed:
             return ("Materials: complete", "Trips 0", "Source: —")
-        needed.sort(key=lambda row: row.still_needed, reverse=True)
+        needed.sort(key=lambda row: row.delivery_remaining, reverse=True)
         top = needed[0]
-        total_left = sum(row.still_needed for row in needed)
+        total_left = sum(row.delivery_remaining for row in needed)
         trips = (total_left + capacity - 1) // capacity
-        source = top.source.strip() if top.source else ""
-        if self._is_placeholder_source(source):
-            source = "Paste Location"
+        if all(row.acquisition_needed == 0 for row in needed):
+            source = "On ship/carrier"
+        else:
+            buy_row = max(needed, key=lambda row: row.acquisition_needed)
+            source = buy_row.source.strip() if buy_row.source else ""
+            if self._is_placeholder_source(source):
+                source = "Paste Location"
         return (
-            f"{top.commodity}: {top.still_needed:,} left",
+            f"{top.commodity}: {top.delivery_remaining:,} left",
             f"Trips {trips}",
             f"Source: {source}",
         )
