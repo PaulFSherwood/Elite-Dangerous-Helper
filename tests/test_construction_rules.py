@@ -364,3 +364,14 @@ class SettlementMenuHierarchyTests(unittest.TestCase):
         ]
         signatures = {self.catalog.functional_signature(self.catalog.facility(fid)) for fid in ids}
         self.assertEqual(len(signatures), 1)
+
+class HeavyHaulHubTests(unittest.TestCase):
+    def setUp(self):
+        self.catalog = ColonisationCatalog()
+
+    def test_large_pad_hub_classification(self):
+        self.assertTrue(self.catalog.is_large_pad_hub(self.catalog.facility("starport_coriolis_no_truss")))
+        self.assertTrue(self.catalog.is_large_pad_hub(self.catalog.facility("starport_asteroid_base_ice")))
+        self.assertTrue(self.catalog.is_large_pad_hub(self.catalog.facility("tier3_port_zeus")))
+        self.assertFalse(self.catalog.is_large_pad_hub(self.catalog.facility("outpost_commercial_outpost_plutus")))
+        self.assertFalse(self.catalog.is_large_pad_hub(self.catalog.facility("planetary_outpost_hephaestus")))

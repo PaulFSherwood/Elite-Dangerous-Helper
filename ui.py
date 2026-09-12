@@ -49,7 +49,7 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.1.6"
+VERSION = "v3.1.8"
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
@@ -1414,13 +1414,33 @@ class OverlayWindow(QWidget):
                     " &nbsp;│&nbsp; Choose one in Overview or Build Queue"
                 )
             else:
+                # Thin mode is action-oriented: keep the facility identity and
+                # build slot, but drop the long construction-menu path so the
+                # material/FSS information remains visible on smaller windows.
+                compact_build = str(build_name).rsplit("/", 1)[-1].strip() or str(build_name)
+                compact_location = str(build_location or "").strip()
+                build_system = str(tracked_system or "").strip()
+                if build_system and compact_location.startswith(build_system + " "):
+                    compact_location = compact_location[len(build_system):].strip()
+                if "—" in compact_location:
+                    body_name, slot_name = compact_location.split("—", 1)
+                    body_name = "".join(body_name.split())
+                    compact_location = f"{body_name} - {slot_name.strip()}"
+                elif " - " in compact_location:
+                    body_name, slot_name = compact_location.split(" - ", 1)
+                    body_name = "".join(body_name.split())
+                    compact_location = f"{body_name} - {slot_name.strip()}"
+
                 self.thin_status_label.setText(
-                    f"<b style='color:#F59E0B;'>BUILD:</b> {build_name} "
-                    f"<span style='color:#9FB0BF;'>— {build_location}</span>"
+                    f"<b style='color:#F59E0B;'>BUILD:</b> {compact_build} "
+                    f"<span style='color:#9FB0BF;'>- {compact_location}</span>"
                     f" &nbsp;│&nbsp; <b style='color:#60A5FA;'>MAT {material_percent}%</b>"
                     f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
                     f" &nbsp;│&nbsp; {trip_line}"
                     f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
+                )
+                self.thin_status_label.setToolTip(
+                    f"Build: {build_name}\nLocation: {build_location}"
                 )
             total = state.body_count if state.body_count is not None else "?"
             scanned = total if state.fss_complete and isinstance(total, int) else len([

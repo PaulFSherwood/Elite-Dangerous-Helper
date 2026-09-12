@@ -221,6 +221,7 @@ class FacilityData:
     location_confirmed: bool = False
     location_locked: bool = False
     deviation_note: str = ""
+    logistics_target_body: str = ""
 
     @classmethod
     def from_reference(cls, facility: FacilityRef, reason: str) -> "FacilityData":
@@ -285,6 +286,7 @@ class PlanData:
     point_adjust_tier_3: int = 0
     point_calibration_tier_2: int = 0
     point_calibration_tier_3: int = 0
+    heavy_haul_logistics: bool = False
 
 
 class ConstructionPanel(QWidget):
@@ -436,6 +438,7 @@ class ConstructionPanel(QWidget):
             "planned_location": facility.planned_location,
             "location_confirmed": bool(facility.location_confirmed),
             "deviation_note": facility.deviation_note,
+            "logistics_target_body": facility.logistics_target_body,
             "tracked_at_utc": str(self.active_focus.get("tracked_at_utc", "") or "")
             or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "reason": facility.reason,
@@ -474,6 +477,7 @@ class ConstructionPanel(QWidget):
             planned_location=str(self.active_focus.get("planned_location", "")),
             location_confirmed=bool(self.active_focus.get("location_confirmed", False)),
             deviation_note=str(self.active_focus.get("deviation_note", "")),
+            logistics_target_body=str(self.active_focus.get("logistics_target_body", "")),
             confidence=str(self.active_focus.get("confidence", "active_focus")),
         )
 
@@ -1119,13 +1123,27 @@ class ConstructionPanel(QWidget):
         goal_grid.addWidget(self.plan_scope_label, 2, 0)
         goal_grid.addWidget(self.plan_scope_combo, 2, 1)
         goal_grid.addWidget(self.plan_phase_status, 2, 2)
+        self.heavy_haul_check = QCheckBox("Heavy-haul logistics — prefer large-pad hubs near active clusters")
+        self.heavy_haul_check.setObjectName("constructionProminentCheck")
+        self.heavy_haul_check.setMinimumHeight(34)
+        self.heavy_haul_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.heavy_haul_check.setToolTip(
+            "Prioritise large-pad Starports/Planetary Ports near established economy clusters. "
+            "Small and medium ports may still be planned when they provide construction points, "
+            "prerequisites, or a distinct system function."
+        )
+        self.heavy_haul_check.toggled.connect(
+            lambda _checked: self._run_user_action(lambda: self._preview_queue(""))
+        )
+        goal_grid.addWidget(self.heavy_haul_check, 3, 0, 1, 3)
         self.plan_edit_hint = QLabel(
             "Choose the two goals and scope. Existing colony? Add completed facilities on the Sites tab. "
+            "Heavy-haul mode favours practical large-pad logistics without deleting useful feeder facilities. "
             "You normally do not need Advanced setup."
         )
         self.plan_edit_hint.setObjectName("constructionWorkflowHint")
         self.plan_edit_hint.setWordWrap(True)
-        goal_grid.addWidget(self.plan_edit_hint, 3, 0, 1, 3)
+        goal_grid.addWidget(self.plan_edit_hint, 4, 0, 1, 3)
         goal_grid.setColumnStretch(1, 1)
         p.addWidget(self.goal_editor)
 
@@ -1469,15 +1487,15 @@ class ConstructionPanel(QWidget):
         layout.addLayout(toolbar)
 
         self.material_source_legend = QLabel(
-            "Active shortages: Purple outline = local source • Blue source = last purchase • "
-            "Amber = unknown • Stocked/completed rows are muted; source is retained"
+            "Material status: Amber = still need to acquire • Green = already on ship/carrier, just deliver • "
+            "Purple outline = local source • Blue source = last purchase • Gray = delivered"
         )
         self.material_source_legend.setObjectName("constructionWorkflowHint")
         layout.addWidget(self.material_source_legend)
 
         self.materials_table = QTableWidget(0, 8)
         self.materials_table.setHorizontalHeaderLabels([
-            "Commodity", "Required", "Delivered", "Ship", "Carrier", "Still needed", "Ship trips", "Material Source"
+            "Commodity", "Required", "Delivered", "Ship", "Carrier", "To Deliver", "Ship trips", "Material Source"
         ])
         header = self.materials_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -1943,8 +1961,12 @@ class ConstructionPanel(QWidget):
             f"Primary: {effective_primary} — {primary_text}\n"
             f"Secondary: {effective_secondary} — {secondary_text}"
         )
+        logistics_text = (
+            "  •  Logistics: Heavy-haul hubs"
+            if self._effective_heavy_haul_logistics() else ""
+        )
         self.overview_scope_summary.setText(
-            f"Scope: {effective_scope}  •  Phase: {phase_text}"
+            f"Scope: {effective_scope}  •  Phase: {phase_text}{logistics_text}"
         )
 
         build_name, build_location = self.focus_build_display()
@@ -2076,24 +2098,38 @@ class ConstructionPanel(QWidget):
                         if not editable:
                             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-                        if left > 0:
-                            # An unfinished depot row stays visually active even
-                            # when the exact shortfall is already on ship/carrier.
-                            # Required vs Delivered is the completion authority.
+                        acquisition_needed = material.acquisition_needed
+                        stocked_for_delivery = left > 0 and acquisition_needed == 0
+
+                        if left <= 0:
+                            # Depot-complete rows should visually disappear into the background.
+                            item.setForeground(QColor("#6F7B85"))
+                            item.setBackground(QColor("#101A22"))
+                            item.setToolTip("Delivered to the construction depot. No action needed.")
+                        elif stocked_for_delivery:
+                            # The depot still needs this tonnage, but the commander already owns
+                            # enough on ship/carrier.  Green means: do not go shopping for it.
+                            item.setBackground(QColor("#10261C"))
+                            item.setForeground(QColor("#B7C9BF"))
+                            if col in (0, 4, 5, 6):
+                                item.setForeground(QColor("#72D69B"))
+                            item.setToolTip(
+                                f"All {left:,} t still required by the depot is already on ship/carrier. "
+                                "No purchase is needed; just deliver it."
+                            )
+                        else:
+                            # Amber means there is still material the commander must acquire.
                             item.setBackground(QColor("#241D0D"))
                             item.setForeground(QColor("#E6EDF3"))
                             if col in (0, 5, 6):
                                 item.setForeground(QColor("#ffb000"))
-                        else:
-                            item.setForeground(QColor("#6F7B85"))
-                            item.setBackground(QColor("#101A22"))
 
                         if col == 4 and not carrier_known:
                             item.setForeground(QColor("#F59E0B"))
                         if col == 3 and not self.ship_inventory_known:
                             item.setForeground(QColor("#F59E0B"))
 
-                        source_actionable = material.acquisition_needed > 0
+                        source_actionable = acquisition_needed > 0
                         local_actionable = bool(is_local_source and source_actionable)
                         item.setData(LOCAL_MARKET_SOURCE_ROLE, local_actionable)
                         if is_local_source:
@@ -2114,8 +2150,14 @@ class ConstructionPanel(QWidget):
                             if not source_actionable:
                                 if self._is_placeholder_source(value):
                                     item.setText("Paste Location")
-                                item.setBackground(QColor("#101A22") if left == 0 else QColor("#241D0D"))
-                                item.setForeground(QColor("#6F7B85") if left == 0 else QColor("#AAB4BE"))
+                                if left == 0:
+                                    item.setBackground(QColor("#101A22"))
+                                    item.setForeground(QColor("#6F7B85"))
+                                else:
+                                    # Keep the source text for reference, but match the stocked
+                                    # row's green action state instead of making it look like a shortage.
+                                    item.setBackground(QColor("#10261C"))
+                                    item.setForeground(QColor("#8FB5A0"))
                                 if not self._is_placeholder_source(value):
                                     item.setToolTip(
                                         f"Source retained for reference: {value}. "
@@ -2217,6 +2259,7 @@ class ConstructionPanel(QWidget):
             self.primary_combo,
             self.secondary_combo,
             self.plan_scope_combo,
+            self.heavy_haul_check,
             self.phase_edit,
             self.primary_port_check,
             self.primary_port_name_edit,
@@ -2363,21 +2406,34 @@ class ConstructionPanel(QWidget):
         self.sites_edit_note.setText(f"Added as existing: {marker_name}. Save Changes when finished.")
 
     def cancel_edits(self) -> None:
+        # Edit-mode previews rebuild the in-memory queue. Temporarily leave edit
+        # mode first so the saved logistics policy, not the checkbox preview, is
+        # used while restoring the real plan.
+        self.editing = False
+        self._regenerate_facilities(
+            self.plan.primary_goal, self.plan.secondary_goal, self.plan.plan_scope
+        )
         self._apply_plan()
-        self.set_editing(False)
 
     def save_edits(self) -> None:
         old_goal = self.plan.primary_goal
         old_secondary = self.plan.secondary_goal
         old_scope = self.plan.plan_scope
+        old_heavy_haul = self.plan.heavy_haul_logistics
         new_goal = self.primary_combo.currentText()
         new_secondary = self.secondary_combo.currentText()
         new_scope = self.plan_scope_combo.currentText()
-        if old_goal != new_goal or old_secondary != new_secondary or old_scope != new_scope:
+        new_heavy_haul = self.heavy_haul_check.isChecked()
+        if (
+            old_goal != new_goal
+            or old_secondary != new_secondary
+            or old_scope != new_scope
+            or old_heavy_haul != new_heavy_haul
+        ):
             answer = QMessageBox.question(
                 self,
-                "Change system goals?",
-                "Changing the goals or plan scope regenerates the recommended build queue. Continue?",
+                "Change system plan?",
+                "Changing the goals, plan scope, or logistics policy regenerates the recommended build queue. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -2387,6 +2443,7 @@ class ConstructionPanel(QWidget):
         self.plan.primary_goal = new_goal
         self.plan.secondary_goal = new_secondary
         self.plan.plan_scope = new_scope
+        self.plan.heavy_haul_logistics = new_heavy_haul
         self.plan.phase = self.phase_edit.text().strip() or "Unknown"
         self.plan.primary_port_complete = self.primary_port_check.isChecked()
         self.plan.primary_port_name = self.primary_port_name_edit.text().strip() or "Primary Port"
@@ -2447,6 +2504,10 @@ class ConstructionPanel(QWidget):
                 combo.blockSignals(False)
         self.phase_edit.setText(self.plan.phase)
         self.primary_port_check.setChecked(self.plan.primary_port_complete)
+        if hasattr(self, "heavy_haul_check"):
+            self.heavy_haul_check.blockSignals(True)
+            self.heavy_haul_check.setChecked(bool(self.plan.heavy_haul_logistics))
+            self.heavy_haul_check.blockSignals(False)
         self.primary_port_name_edit.setText(self.plan.primary_port_name)
         self.primary_port_location_edit.setText(self.plan.primary_port_location)
         raw_t2, raw_t3, _t2_ports, _t3_ports = self._construction_state_raw()
@@ -2483,11 +2544,14 @@ class ConstructionPanel(QWidget):
 
     def _preview_queue(self, _text: str) -> None:
         if self.editing:
-            self._render_queue(
-                self.primary_combo.currentText(),
-                self.secondary_combo.currentText(),
-                self.plan_scope_combo.currentText(),
-            )
+            primary = self.primary_combo.currentText()
+            secondary = self.secondary_combo.currentText()
+            scope = self.plan_scope_combo.currentText()
+            # Always regenerate from the current edit controls. This matters when
+            # Heavy-haul is toggled back to its saved value: logistics-only rows
+            # from the previous preview must disappear immediately.
+            self._regenerate_facilities(primary, secondary, scope)
+            self._render_queue(primary, secondary, scope)
 
     @staticmethod
     def _looks_like_primary_port_marker(text: str) -> bool:
@@ -3269,14 +3333,37 @@ class ConstructionPanel(QWidget):
                 descriptors.append(self._descriptor_for_facility_data(facility))
 
         remaining = list(queued)
+        prefer_heavy_hub = (
+            self._effective_heavy_haul_logistics()
+            and self._selected_goals_physically_complete(*self._effective_goal_names())
+        )
         while remaining:
-            choice: Optional[FacilityData] = None
-            for facility in remaining:
+            buildable = [
+                facility for facility in remaining
                 if self._facility_can_build(
                     facility, tier_2, tier_3, descriptors, t2_ports, t3_ports
-                ):
-                    choice = facility
-                    break
+                )
+            ]
+            choice: Optional[FacilityData] = None
+            if buildable and prefer_heavy_hub:
+                choice = next(
+                    (
+                        facility for facility in buildable
+                        if facility.logistics_target_body
+                        and CATALOG.is_large_pad_hub(self._reference_for_facility_data(facility))
+                    ),
+                    None,
+                )
+                if choice is None:
+                    choice = next(
+                        (
+                            facility for facility in buildable
+                            if CATALOG.is_large_pad_hub(self._reference_for_facility_data(facility))
+                        ),
+                        None,
+                    )
+            if choice is None and buildable:
+                choice = buildable[0]
             if choice is None:
                 excluded_signatures = self._known_facility_signatures()
                 excluded_signatures.update(
@@ -3389,6 +3476,9 @@ class ConstructionPanel(QWidget):
             self._append_system_buildout_rows(
                 generated, goal, effective_secondary, old_by_id, old_by_role,
                 full_buildout=(plan_scope == "Full System Build-Out"),
+            )
+            self._ensure_heavy_haul_hubs(
+                generated, goal, effective_secondary, old_by_id, old_by_role, plan_scope
             )
 
         self.plan.facilities = generated
@@ -3508,6 +3598,246 @@ class ConstructionPanel(QWidget):
                 if needed_for_stage <= 0:
                     break
 
+    def _selected_goals_physically_complete(
+        self,
+        primary_goal: Optional[str] = None,
+        secondary_goal: Optional[str] = None,
+    ) -> bool:
+        """True when the selected role is already established in the real colony.
+
+        Heavy-haul infrastructure is deliberately a post-goal optimisation.  A
+        brand-new colony should still earn its cheap T2/T3 bridges and satisfy
+        the selected mission before spending scarce points on convenience hubs.
+        """
+
+        primary_goal = primary_goal or self.plan.primary_goal
+        secondary_goal = self.plan.secondary_goal if secondary_goal is None else secondary_goal
+        known = self._completed_physical_references()
+        primary = CATALOG.goal_progress(
+            primary_goal,
+            known,
+            primary_port_complete=self.plan.primary_port_complete,
+            active_facilities=[],
+        )
+        if primary.get("status") != "Complete":
+            return False
+        mapped_secondary = CATALOG.mapped_secondary_goal(secondary_goal)
+        if not mapped_secondary:
+            return True
+        secondary = CATALOG.goal_progress(
+            mapped_secondary,
+            known,
+            primary_port_complete=self.plan.primary_port_complete,
+            active_facilities=[],
+        )
+        return secondary.get("status") == "Complete"
+
+    def _physical_body_references_for_logistics(self, body: str) -> list[FacilityRef]:
+        """Return only facilities that physically exist/are actively building on a body."""
+
+        refs: list[FacilityRef] = []
+        seen: set[str] = set()
+        for facility in self.plan.facilities:
+            if facility.status not in ("Complete", "Building now"):
+                continue
+            if not self._location_is_real(facility.location):
+                continue
+            if self._facility_body_from_location(facility.location) != body:
+                continue
+            reference = self._reference_for_facility_data(facility)
+            if reference.id not in seen:
+                refs.append(reference)
+                seen.add(reference.id)
+        for site in self.plan.sites:
+            if site.body != body:
+                continue
+            for fragment in self._site_facility_fragments(site.facility):
+                reference = CATALOG.facility_from_text(fragment)
+                if reference is not None and reference.id not in seen:
+                    refs.append(reference)
+                    seen.add(reference.id)
+        return refs
+
+    def _body_has_physical_large_hub(self, body: str) -> bool:
+        return any(
+            CATALOG.is_large_pad_hub(reference)
+            for reference in self._physical_body_references_for_logistics(body)
+        )
+
+    def _heavy_haul_cluster_score(self, site: SiteData) -> int:
+        """Operational importance of an already-developed body.
+
+        Supporting facilities carry most of the weight because those are the
+        economies a same-body large port can strongly link.  Small/medium ports
+        still add a little value, and the primary-port body receives a modest
+        stability bonus.  Planned-but-unbuilt rows are intentionally excluded so
+        the app does not invent a 'cluster' from its own future suggestions.
+        """
+
+        score = 0
+        goal_weights = CATALOG.goal_economy_weights(*self._effective_goal_names())
+        for reference in self._physical_body_references_for_logistics(site.body):
+            if CATALOG.is_large_pad_hub(reference):
+                continue
+            if CATALOG.is_supporting_facility(reference):
+                score += 3
+            elif CATALOG.is_port(reference):
+                score += 1
+            economy = CATALOG._normalise(reference.market_economy or reference.economy)
+            if economy and goal_weights.get(economy, 0) > 0:
+                score += 1
+        if site.body == self._primary_port_body():
+            score += 1
+        return score
+
+    @staticmethod
+    def _site_has_free_slot(site: SiteData, site_type: str) -> bool:
+        if site_type == "surface":
+            return bool(site.landable and site.surface_total > site.surface_used)
+        if site_type == "orbital":
+            return bool(site.orbital_total > site.orbital_used)
+        return False
+
+    def _ensure_heavy_haul_hubs(
+        self,
+        generated: list[FacilityData],
+        primary_goal: str,
+        secondary_goal: str,
+        old_by_id: dict[str, FacilityData],
+        old_by_role: dict[str, FacilityData],
+        plan_scope: str,
+    ) -> None:
+        """Target large-pad hubs at the colony's strongest existing clusters.
+
+        This is intentionally a preference, not a ban on Outposts.  Cheap T1
+        ports remain valuable point generators and distinct economy functions.
+        Once the selected goals physically exist, heavy-haul mode tries to give
+        up to two (goal-directed) or three (full build-out) important bodies a
+        large-pad hub.  Existing Starport rows are reused first; a Tier-3
+        Planetary Port is added when the important body has surface capacity but
+        no orbital slot for a large orbital Starport.
+        """
+
+        if not self._effective_heavy_haul_logistics():
+            return
+        if not self._selected_goals_physically_complete(primary_goal, secondary_goal):
+            return
+
+        candidates = [
+            site for site in self.plan.sites
+            if self._heavy_haul_cluster_score(site) >= 4
+            and not self._body_has_physical_large_hub(site.body)
+            and (
+                self._site_has_free_slot(site, "orbital")
+                or self._site_has_free_slot(site, "surface")
+            )
+        ]
+        candidates.sort(
+            key=lambda site: (
+                -self._heavy_haul_cluster_score(site),
+                self._body_sort_key(site.body, site.body_id),
+            )
+        )
+        if not candidates:
+            return
+
+        max_hubs = 3 if plan_scope == "Full System Build-Out" else 2
+        assigned_bodies = {
+            facility.logistics_target_body
+            for facility in generated
+            if facility.logistics_target_body
+        }
+        used_ids = {facility.facility_id for facility in generated if facility.facility_id}
+
+        orbital_ids = [
+            "starport_coriolis_no_truss",
+            "starport_asteroid_base_ice",
+            "starport_coriolis_dual_truss",
+            "starport_asteroid_base_metal",
+        ]
+        surface_ids = [
+            "tier3_port_zeus",
+            "tier3_port_hera",
+            "tier3_port_poseidon",
+        ]
+
+        def existing_large_row(site_type: str) -> Optional[FacilityData]:
+            for row in generated:
+                if row.status != "Queued" or row.logistics_target_body:
+                    continue
+                reference = self._reference_for_facility_data(row)
+                if reference.site_type == site_type and CATALOG.is_large_pad_hub(reference):
+                    return row
+            return None
+
+        def add_large_row(site_type: str, body: str) -> Optional[FacilityData]:
+            ids = orbital_ids if site_type == "orbital" else surface_ids
+            for facility_id in ids:
+                if facility_id in used_ids:
+                    continue
+                reference = CATALOG.facility(facility_id)
+                if reference is None:
+                    continue
+                previous = old_by_id.get(reference.id) or old_by_role.get(reference.display_name)
+                row = FacilityData.from_reference(
+                    reference,
+                    (
+                        f"Heavy-haul logistics: establish a large-pad hub on {body} so the "
+                        "existing same-body economy cluster can feed a practical bulk-haul port."
+                    ),
+                )
+                if previous and previous.status not in ("Skipped",):
+                    row.status = previous.status
+                    row.location = previous.location
+                    row.location_locked = previous.location_locked
+                row.logistics_target_body = body
+                generated.append(row)
+                used_ids.add(reference.id)
+                return row
+            return None
+
+        hubs_targeted = 0
+        for site in candidates:
+            if hubs_targeted >= max_hubs:
+                break
+            if site.body in assigned_bodies:
+                continue
+
+            # Reuse a large orbital Starport already required by the full build
+            # before adding another expensive port.  If the cluster has no free
+            # orbital slot, a Tier-3 surface Planetary Port is the fallback.
+            row: Optional[FacilityData] = None
+            if self._site_has_free_slot(site, "orbital"):
+                row = existing_large_row("orbital")
+                if row is None:
+                    row = add_large_row("orbital", site.body)
+            if row is None and self._site_has_free_slot(site, "surface"):
+                row = existing_large_row("surface")
+                if row is None:
+                    row = add_large_row("surface", site.body)
+            if row is None:
+                continue
+
+            row.logistics_target_body = site.body
+            assigned_bodies.add(site.body)
+            hubs_targeted += 1
+
+    def _queue_reason_with_logistics(self, facility: FacilityData) -> str:
+        reason = facility.reason
+        reference = self._reference_for_facility_data(facility)
+        if (
+            self._effective_heavy_haul_logistics()
+            and facility.logistics_target_body
+            and CATALOG.is_large_pad_hub(reference)
+        ):
+            reason += (
+                f"  •  Heavy-haul hub for {facility.logistics_target_body}: prefer large-pad "
+                "access beside the established economy cluster/strong-link network."
+            )
+        if facility.deviation_note:
+            reason += f"  •  ⚠ {facility.deviation_note}"
+        return reason
+
     @staticmethod
     def _is_port_reference(reference: FacilityRef) -> bool:
         return CATALOG.is_port(reference)
@@ -3532,6 +3862,11 @@ class ConstructionPanel(QWidget):
         if self.editing and hasattr(self, "plan_scope_combo"):
             return self.plan_scope_combo.currentText()
         return self.plan.plan_scope
+
+    def _effective_heavy_haul_logistics(self) -> bool:
+        if self.editing and hasattr(self, "heavy_haul_check"):
+            return bool(self.heavy_haul_check.isChecked())
+        return bool(self.plan.heavy_haul_logistics)
 
     def _completed_physical_references(self) -> list[FacilityRef]:
         """Facilities that are actually complete, including pre-Observatory sites."""
@@ -3765,10 +4100,34 @@ class ConstructionPanel(QWidget):
             score += 55
 
         primary_body = self._primary_port_body()
-        local_refs = self._body_facility_references(site.body)
+        local_refs = [
+            other for other in self._body_facility_references(site.body)
+            if other.id != reference.id
+        ]
         is_port = self._is_port_reference(reference)
+        is_large_hub = CATALOG.is_large_pad_hub(reference)
         local_ports = [other for other in local_refs if self._is_port_reference(other)]
+        local_large_hubs = [other for other in local_ports if CATALOG.is_large_pad_hub(other)]
         local_support = [other for other in local_refs if not self._is_port_reference(other)]
+
+        if self._effective_heavy_haul_logistics():
+            if is_large_hub:
+                # Explicit target bodies are selected from facilities that already
+                # physically exist, so this bonus is deliberately stronger than
+                # generic economy affinity or future-plan proximity.
+                if facility.logistics_target_body:
+                    if site.body == facility.logistics_target_body:
+                        score += 5000
+                    else:
+                        score -= 1200
+                cluster_score = self._heavy_haul_cluster_score(site)
+                score += 220 * cluster_score
+                if cluster_score == 0:
+                    score -= 600
+            elif not is_port and local_large_hubs:
+                # Once a large-pad hub exists/plans onto a body, keep later
+                # support nearby so bulk-haul commanders can actually use it.
+                score += 900 + 60 * len(local_large_hubs)
 
         # Update 3: port<->supporting-facility on the same body is a strong link;
         # different bodies are only weak links.  Build goal clusters around an
@@ -4010,6 +4369,7 @@ class ConstructionPanel(QWidget):
             goal != self.plan.primary_goal
             or secondary_goal != self.plan.secondary_goal
             or plan_scope != self.plan.plan_scope
+            or self._effective_heavy_haul_logistics() != bool(self.plan.heavy_haul_logistics)
             or not self.plan.facilities
             or (not has_pending and needs_pending_work)
         ):
@@ -4028,10 +4388,11 @@ class ConstructionPanel(QWidget):
         phase = self.current_development_phase(goal, secondary_goal, plan_scope)
         secondary_text = self._progress_label(secondary_progress)
         point_source = "game-calibrated" if self.plan.point_balance_calibrated else "calculated"
+        logistics_notice = "  •  Heavy-haul logistics ON" if self._effective_heavy_haul_logistics() else ""
         self.queue_notice.setText(
             f"{self.display_system_name()}  •  Points now: {tier_2} T2, {tier_3} T3 ({point_source})  •  "
             f"Primary: {self._progress_label(primary_progress)}  •  "
-            f"Secondary: {secondary_text}  •  {phase}"
+            f"Secondary: {secondary_text}  •  {phase}{logistics_notice}"
         )
         self.queue_table.setRowCount(len(rows))
         next_facility = self._next_buildable_facility()
@@ -4051,13 +4412,14 @@ class ConstructionPanel(QWidget):
                 action = "Skipped"
             else:
                 action = "Planned"
+            queue_reason = self._queue_reason_with_logistics(facility)
             values = [
                 str(row + 1),
                 facility.role,
                 self._queue_display_location(facility.location),
                 facility.preferred_site.title(),
                 facility.point_summary,
-                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
+                queue_reason,
                 facility.status,
                 block_reason if action == "BLOCKED" else action,
             ]
@@ -4067,7 +4429,7 @@ class ConstructionPanel(QWidget):
                 facility.location,
                 facility.preferred_site.title(),
                 facility.point_summary,
-                (facility.reason + (f"  •  ⚠ {facility.deviation_note}" if facility.deviation_note else "")),
+                queue_reason,
                 facility.status,
                 block_reason if action == "BLOCKED" else action,
             ]

@@ -624,6 +624,23 @@ class ColonisationCatalog:
         return facility.facility_type in {"Primary Port", "Planetary Port", "Starport", "Outpost"}
 
     @staticmethod
+    def is_large_pad_hub(facility: FacilityRef) -> bool:
+        """Return whether this construction choice is a deliberate large-pad hub.
+
+        Normal orbital Outposts and Tier-1 Planetary Outposts remain useful
+        feeder/point facilities, but they are not heavy-haul logistics hubs.
+        Observatory treats orbital Starports and Tier-3 Planetary Ports as the
+        large-pad choices it should cluster important economies around.
+
+        The starter/Primary Port is intentionally not assumed to be large-pad;
+        its actual pad capability depends on the initial colony site.
+        """
+
+        if facility.facility_type == "Starport":
+            return True
+        return facility.facility_type == "Planetary Port" and int(facility.tier or 0) >= 3
+
+    @staticmethod
     def is_supporting_facility(facility: FacilityRef) -> bool:
         return facility.facility_type in {"Settlement", "Installation", "Hub"}
 

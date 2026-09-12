@@ -504,6 +504,41 @@ QLabel#materialSourcePill[missing="true"] {
     border: 1px solid #8A6300;
 }
 
+
+/* Prominent planner option checkbox ----------------------------------- */
+QCheckBox#constructionProminentCheck {
+    color: #D9E6EF;
+    background-color: #101A22;
+    border: 1px solid #3B5265;
+    border-radius: 6px;
+    padding: 6px 10px 6px 8px;
+    font-weight: 700;
+}
+QCheckBox#constructionProminentCheck:hover {
+    background-color: #142330;
+    border-color: #60A5FA;
+}
+QCheckBox#constructionProminentCheck:checked {
+    color: #F3E8FF;
+    background-color: #21163B;
+    border-color: #8B5CF6;
+}
+QCheckBox#constructionProminentCheck::indicator {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border: 2px solid #8AA0B3;
+    border-radius: 4px;
+    background-color: #0B1117;
+}
+QCheckBox#constructionProminentCheck::indicator:hover {
+    border-color: #93C5FD;
+}
+QCheckBox#constructionProminentCheck::indicator:checked {
+    background-color: #7C3AED;
+    border: 2px solid #C4B5FD;
+}
+
 /* Construction planner v3.0.7 ----------------------------------------- */
 QPushButton#constructionPrimaryAction {
     background-color: #17324A;
