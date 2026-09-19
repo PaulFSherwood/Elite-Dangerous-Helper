@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+from .paths import DATA_DIR
 FACILITY_FILE = DATA_DIR / "colonisation_facilities.json"
 
 

@@ -1,132 +1,22 @@
 #!/usr/bin/env python3
+"""Compatibility launcher for Elite Journal Helper.
+
+Keep this filename at the project/install root so existing desktop shortcuts,
+shell aliases, and user launch commands continue to work while the application
+implementation lives in ``src/elite_journal_helper``.
+"""
 
 from __future__ import annotations
 
-import argparse
 import sys
-import time
 from pathlib import Path
 
-_PROCESS_START = time.perf_counter()
-_PROFILE_STARTUP = False
+ROOT_DIR = Path(__file__).resolve().parent
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QColor, QIcon, QPixmap
-from PyQt6.QtWidgets import QApplication, QSplashScreen
-
-
-def _startup_trace(message: str) -> None:
-    if not _PROFILE_STARTUP:
-        return
-    elapsed = time.perf_counter() - _PROCESS_START
-    print(f"[startup +{elapsed:6.2f}s] {message}", flush=True)
-
-
-def main() -> None:
-    global _PROFILE_STARTUP
-
-    parser = argparse.ArgumentParser(description="Elite Dangerous Linux overlay")
-    parser.add_argument("--journal-dir", help="Elite Dangerous journal folder")
-    parser.add_argument("--no-top", action="store_true", help="Disable always-on-top window")
-    parser.add_argument(
-        "--profile-startup",
-        action="store_true",
-        help="Print detailed startup timing diagnostics",
-    )
-    parser.add_argument(
-        "--history-files",
-        type=int,
-        default=30,
-        help="Number of recent journal files to read on startup",
-    )
-
-    args = parser.parse_args()
-    _PROFILE_STARTUP = bool(args.profile_startup)
-
-    app = QApplication(sys.argv)
-    _startup_trace("Qt application created")
-
-    # The normal in-window startup overlay cannot appear until OverlayWindow has
-    # finished constructing.  Show a tiny splash *before* importing the heavier
-    # Observatory modules so a desktop-icon launch gives immediate feedback.
-    splash_pixmap = QPixmap(560, 150)
-    splash_pixmap.fill(QColor("#081018"))
-    splash = QSplashScreen(splash_pixmap)
-    splash.showMessage(
-        "Observatory is starting…\nLoading application modules",
-        Qt.AlignmentFlag.AlignCenter,
-        QColor("#D7E9F7"),
-    )
-    splash.show()
-    app.processEvents()
-    _startup_trace("Pre-window splash visible")
-
-    from journal import JournalMonitor, resolve_journal_dir
-    _startup_trace("Journal module imported")
-    from ui import OverlayWindow
-    _startup_trace("UI modules imported")
-
-    journal_dir = resolve_journal_dir(args.journal_dir)
-
-    if not journal_dir.exists():
-        splash.close()
-        print(f"Journal directory not found: {journal_dir}")
-        return
-
-    icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
-
-    splash.showMessage(
-        "Observatory is starting…\nBuilding interface",
-        Qt.AlignmentFlag.AlignCenter,
-        QColor("#D7E9F7"),
-    )
-    app.processEvents()
-
-    monitor = JournalMonitor(journal_dir, history_files=args.history_files)
-    _startup_trace("Journal monitor shell created")
-    window = OverlayWindow(
-        monitor,
-        always_on_top=not args.no_top,
-        startup_profile=args.profile_startup,
-    )
-    _startup_trace("Main window constructed")
-
-    # Show the application immediately. Journal/history reconstruction happens
-    # in the background and fills the already-visible fields as data becomes
-    # available. The splash covers only the pre-window construction gap; after
-    # that the normal full-window loading overlay owns startup progress.
-    window.set_startup_loading(True, "Preparing Observatory…")
-
-    def on_startup_progress(message: str) -> None:
-        _startup_trace(message)
-        window.set_startup_message(message)
-
-    def on_startup_finished() -> None:
-        _startup_trace("Startup loading finished")
-        window.finish_startup_loading()
-
-    def on_startup_failed(message: str) -> None:
-        _startup_trace(f"Startup failed: {message}")
-        window.fail_startup_loading(message)
-
-    monitor.startup_progress.connect(on_startup_progress)
-    monitor.startup_finished.connect(on_startup_finished)
-    monitor.startup_failed.connect(on_startup_failed)
-
-    window.show()
-    window.raise_()
-    window.activateWindow()
-    app.processEvents()
-    splash.finish(window)
-    _startup_trace("Main window shown")
-
-    # Give the first paint event a chance to put the loading screen on the
-    # desktop before the background loader starts doing disk work.
-    QTimer.singleShot(75, monitor.start_async)
-
-    sys.exit(app.exec())
+from elite_journal_helper.app import main
 
 
 if __name__ == "__main__":

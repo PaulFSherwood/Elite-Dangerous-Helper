@@ -1,6 +1,6 @@
 import unittest
 
-from construction_rules import ColonisationCatalog, FacilityPrerequisite
+from elite_journal_helper.construction_rules import ColonisationCatalog, FacilityPrerequisite
 
 
 class ConstructionPrerequisiteTests(unittest.TestCase):

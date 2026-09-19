@@ -1,6 +1,6 @@
 import unittest
 
-from construction_rules import asteroid_location_available
+from elite_journal_helper.construction_rules import asteroid_location_available
 
 
 class AsteroidPlacementTests(unittest.TestCase):

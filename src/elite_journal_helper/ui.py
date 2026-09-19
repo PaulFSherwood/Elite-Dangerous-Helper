@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import time
 
 from PyQt6.QtCore import Qt, QSettings, QSize, QRect, QTimer
 from PyQt6.QtGui import QColor, QBrush, QTextCursor, QIcon, QPixmap
@@ -23,13 +24,13 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
 )
 
-from journal import JournalMonitor
-from state import BodyInfo
-from rules import bio_key
-from bio_icons import bio_icon_html
-from ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
-from search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description, evaluate_search_target
-from construction_ui import ConstructionPanel, PRIMARY_GOALS, SECONDARY_GOALS
+from .journal import JournalMonitor
+from .state import BodyInfo
+from .rules import bio_key
+from .bio_icons import bio_icon_html
+from .ships import friendly_ship_icon_path, friendly_ship_name, on_foot_icon_path
+from .search_targets import SEARCH_TYPES, get_items_for_type, get_rule_description, evaluate_search_target
+from .construction_ui import ConstructionPanel, PRIMARY_GOALS, SECONDARY_GOALS
 
 WINDOW_WIDTH = 1270
 WINDOW_HEIGHT = 715
@@ -49,12 +50,15 @@ FOOTER_HEIGHT = 28
 HEADER_SPACING = 5
 ROW_SPACING = 10
 
-VERSION = "v3.1.8"
+from .paths import ASSETS_DIR, STYLES_DIR
+from .version import DISPLAY_VERSION
+
+VERSION = DISPLAY_VERSION
 THIN_HEIGHT = 48
 THIN_MIN_WIDTH = 760
 
 def load_stylesheet() -> str:
-    style_path = Path(__file__).resolve().parent / "styles" / "dashboard.qss"
+    style_path = STYLES_DIR / "dashboard.qss"
     if not style_path.exists():
         return ""
     return style_path.read_text(encoding="utf-8")
@@ -245,7 +249,7 @@ class OverlayWindow(QWidget):
         # self.update_search_rules_label()
         self.search_selection_changed()
 
-    def set_table_filter(self, mode: str) -> None:
+    def set_table_filter(self, mode: str, *, refresh: bool = True) -> None:
         self.table_filter_mode = mode
 
         for button in self.table_filter_buttons:
@@ -256,7 +260,7 @@ class OverlayWindow(QWidget):
             button.style().polish(button)
             button.update()
 
-        if hasattr(self, "table"):
+        if refresh and hasattr(self, "table"):
             self.refresh()
 
     def make_table_filter_button(self, text: str) -> QPushButton:
@@ -406,7 +410,27 @@ class OverlayWindow(QWidget):
         separator.setFixedWidth(1)
         return separator
 
-    def __init__(self, monitor: JournalMonitor, always_on_top: bool = True):
+    def __init__(
+        self,
+        monitor: JournalMonitor,
+        always_on_top: bool = True,
+        startup_profile: bool = False,
+    ):
+        self.startup_profile = bool(startup_profile)
+        _init_started = time.perf_counter() if self.startup_profile else 0.0
+        _init_last = _init_started
+
+        def _init_trace(label: str) -> None:
+            nonlocal _init_last
+            if not self.startup_profile:
+                return
+            now = time.perf_counter()
+            print(
+                f"[ui-init +{now - _init_started:6.2f}s / +{now - _init_last:5.2f}s] {label}",
+                flush=True,
+            )
+            _init_last = now
+
         # ------------------------------------------------------------------
         # 1. Window setup
         #
@@ -443,11 +467,12 @@ class OverlayWindow(QWidget):
 
         self.setWindowTitle("Observatory")
 
-        icon_path = Path(__file__).resolve().parent / "assets" / "ed_helper_icon.png"
+        icon_path = ASSETS_DIR / "ed_helper_icon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
         self.setWindowOpacity(self.normal_opacity)
+        _init_trace("Window shell created")
 
         # ------------------------------------------------------------------
         # 2. Special/search row widgets
@@ -517,7 +542,7 @@ class OverlayWindow(QWidget):
 
         self.construction_view_combo = QComboBox()
         self.construction_view_combo.setObjectName("searchCombo")
-        self.construction_view_combo.addItems(["Overview", "Sites", "Build Queue", "Materials"])
+        self.construction_view_combo.addItems(["Overview", "Build Queue", "Materials", "System Layout"])
         self.construction_view_combo.setMinimumWidth(125)
 
         mode_icon = QLabel("⚒")
@@ -643,12 +668,15 @@ class OverlayWindow(QWidget):
         self.final_card = self.make_info_card("◆", "Final", "none")
         self.event_card = self.make_info_card("✦", "Event", "?")
 
+        self.route_sep_system_target = self.make_route_separator()
+        self.route_sep_target_final = self.make_route_separator()
+        self.route_sep_final_event = self.make_route_separator()
         route_layout.addWidget(self.system_card, stretch=2)
-        route_layout.addWidget(self.make_route_separator())
+        route_layout.addWidget(self.route_sep_system_target)
         route_layout.addWidget(self.target_card, stretch=2)
-        route_layout.addWidget(self.make_route_separator())
+        route_layout.addWidget(self.route_sep_target_final)
         route_layout.addWidget(self.final_card, stretch=2)
-        route_layout.addWidget(self.make_route_separator())
+        route_layout.addWidget(self.route_sep_final_event)
         route_layout.addWidget(self.event_card, stretch=1)
 
         # Compact commander statistics card.
@@ -751,6 +779,7 @@ class OverlayWindow(QWidget):
         # Construction mode can hide it without changing the app width.
         self.middle_status_widget = QWidget()
         self.middle_status_widget.setLayout(middle_row)
+        _init_trace("Header/status widgets created")
 
         # ------------------------------------------------------------------
         # 5. Spreadsheet/table section
@@ -843,7 +872,11 @@ class OverlayWindow(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(34)
 
-        self.construction_panel = ConstructionPanel(self.settings)
+        _init_trace("Exploration table created")
+        self.construction_panel = ConstructionPanel(
+            self.settings, startup_profile=self.startup_profile
+        )
+        _init_trace("Construction panel created")
         self.construction_panel.current_build_changed.connect(self.on_current_build_changed)
         self.construction_panel.system_lock_changed.connect(self.on_construction_system_lock_changed)
         self.construction_panel.carrier_empty_baseline_requested.connect(
@@ -1075,6 +1108,7 @@ class OverlayWindow(QWidget):
         startup_layout.addWidget(self.startup_message_label)
         startup_layout.addStretch()
         self.startup_overlay.hide()
+        _init_trace("Main layouts and startup overlay created")
 
         # ------------------------------------------------------------------
         # 10. Stylesheet and live updates
@@ -1084,6 +1118,7 @@ class OverlayWindow(QWidget):
         # ------------------------------------------------------------------
 
         self.setStyleSheet(load_stylesheet())
+        _init_trace("Stylesheet applied")
 
         # Watchdog can report several file changes for one Elite action
         # (Journal + Cargo + Market).  Coalesce those notifications so the GUI
@@ -1103,19 +1138,28 @@ class OverlayWindow(QWidget):
             lambda: self._set_update_visual(False)
         )
 
-        self.set_table_filter("All")
+        # Startup previously performed three or four full refreshes before the
+        # window could be shown: set_table_filter(), an explicit refresh(), the
+        # app-mode signal, and then an explicit set_app_mode() call.  Construction
+        # refreshes are intentionally substantial, so do the visual setup without
+        # refreshing and restore the saved app mode exactly once.
+        self.set_table_filter("All", refresh=False)
         self.monitor.updated.connect(self.schedule_refresh)
-        self.refresh()
+        _init_trace("Refresh timers/signals connected")
 
         saved_app_mode = str(self.settings.value("app_mode", "Exploration"))
         if saved_app_mode not in ("Exploration", "Construction"):
             saved_app_mode = "Exploration"
+        self.app_mode_combo.blockSignals(True)
         self.app_mode_combo.setCurrentText(saved_app_mode)
+        self.app_mode_combo.blockSignals(False)
         self.set_app_mode(saved_app_mode)
+        _init_trace(f"Initial {saved_app_mode} view rendered once")
 
         saved_mode = self.settings.value("thin_mode", False, type=bool)
         if saved_mode:
             self.set_view_mode(True)
+        _init_trace("OverlayWindow constructor finished")
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -1406,7 +1450,13 @@ class OverlayWindow(QWidget):
             self.thin_system_label.setToolTip(
                 f"Build system: {tracked_system}\nCurrent system: {system}"
             )
-            material_line, trip_line, source_line = self.construction_panel.focus_material_summary()
+            (
+                material_line,
+                stock_line,
+                stock_exact,
+                trip_line,
+                source_line,
+            ) = self.construction_panel.focus_material_summary()
             material_percent = self.construction_panel.focus_material_progress_percent()
             if build_name == "Not selected":
                 self.thin_status_label.setText(
@@ -1431,10 +1481,12 @@ class OverlayWindow(QWidget):
                     body_name = "".join(body_name.split())
                     compact_location = f"{body_name} - {slot_name.strip()}"
 
+                stock_color = "#72D69B" if stock_exact else "#F59E0B"
                 self.thin_status_label.setText(
                     f"<b style='color:#F59E0B;'>BUILD:</b> {compact_build} "
                     f"<span style='color:#9FB0BF;'>- {compact_location}</span>"
                     f" &nbsp;│&nbsp; <b style='color:#60A5FA;'>MAT {material_percent}%</b>"
+                    f" &nbsp;│&nbsp; <b style='color:{stock_color};'>{stock_line}</b>"
                     f" &nbsp;│&nbsp; <span style='color:#F59E0B;'>{material_line}</span>"
                     f" &nbsp;│&nbsp; {trip_line}"
                     f" &nbsp;│&nbsp; <span style='color:#9FB0BF;'>{source_line}</span>"
@@ -1877,6 +1929,10 @@ class OverlayWindow(QWidget):
             self._monitor_refresh_timer.stop()
         state = self.monitor.state
         construction_mode = hasattr(self, "app_mode_combo") and self.app_mode_combo.currentText() == "Construction"
+        # Construction mode is table/workflow focused; the old global Next Haul card
+        # duplicated the Materials view and is hidden to reclaim horizontal space.
+        self.final_card.setVisible(not construction_mode)
+        self.route_sep_target_final.setVisible(not construction_mode)
         if construction_mode:
             self.construction_panel.set_system_data(
                 state.system or "Unknown system",
@@ -1997,10 +2053,8 @@ class OverlayWindow(QWidget):
         if construction_mode:
             build_name, build_location = self.construction_panel.focus_build_display()
             tracked_system, _locked = self.construction_panel.system_lock_state()
-            material_line, _trip_line, _source_line = self.construction_panel.focus_material_summary()
             self.update_info_card(self.system_card, "🌌", "Current System", system)
             self.update_info_card(self.target_card, "🔒", "Build System", tracked_system)
-            self.update_info_card(self.final_card, "📦", "Next Haul", material_line)
             self.update_info_card(self.event_card, "📍", "Build Location", build_location)
 
             # Exploration widgets are hidden in Construction mode.  Rebuilding

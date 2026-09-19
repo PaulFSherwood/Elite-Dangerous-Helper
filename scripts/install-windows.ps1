@@ -2,14 +2,15 @@ param([switch]$DesktopShortcut)
 
 $ErrorActionPreference = "Stop"
 $AppName = "Elite Journal Helper"
-$SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SourceDir = Split-Path -Parent $ScriptDir
 $InstallDir = Join-Path $env:LOCALAPPDATA "EliteJournalHelper"
 $StartMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $StartLink = Join-Path $StartMenu "$AppName.lnk"
 $DesktopLink = Join-Path ([Environment]::GetFolderPath("Desktop")) "$AppName.lnk"
 
 if (-not (Test-Path (Join-Path $SourceDir "ed_journal_probe.py"))) {
-    throw "Run this installer from the project folder."
+    throw "Could not find ed_journal_probe.py in the project root."
 }
 
 $Python = if (Get-Command py -ErrorAction SilentlyContinue) { "py" }
@@ -20,9 +21,10 @@ if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
 Get-ChildItem $SourceDir -Force | Where-Object {
-    $_.Name -notin @(".git",".github","__pycache__",".venv","venv","build","dist",
-                     "install-user.sh","uninstall-user.sh","install-windows.ps1","uninstall-windows.ps1") `
-    -and $_.Name -notmatch '\.log$'
+    $_.Name -notin @(".git",".github","__pycache__",".pytest_cache",".venv","venv","build","dist",
+                     "docs","tests","tools","scripts","requirements-dev.txt") `
+    -and $_.Name -notmatch '^PreviousVersion' `
+    -and $_.Name -notmatch '\.(log|sqlite|sqlite3|bak|patch)$'
 } | ForEach-Object {
     Copy-Item $_.FullName $InstallDir -Recurse -Force
 }
@@ -33,7 +35,7 @@ if ($Python -eq "py") { & py -3 -m venv $Venv } else { & python -m venv $Venv }
 $Py = Join-Path $Venv "Scripts\python.exe"
 $PyW = Join-Path $Venv "Scripts\pythonw.exe"
 & $Py -m pip install --upgrade pip
-& $Py -m pip install PyQt6 watchdog
+& $Py -m pip install -r (Join-Path $InstallDir "requirements.txt")
 
 $Main = Join-Path $InstallDir "ed_journal_probe.py"
 $Ico = Join-Path $InstallDir "assets\ed_helper_icon.ico"
@@ -45,7 +47,7 @@ function New-Link([string]$Path) {
     $Link.TargetPath = $PyW
     $Link.Arguments = "`"$Main`""
     $Link.WorkingDirectory = $InstallDir
-    $Link.Description = "Elite Dangerous exploration journal overlay"
+    $Link.Description = "Elite Dangerous exploration and construction journal helper"
     $Link.IconLocation = "$Icon,0"
     $Link.Save()
 }

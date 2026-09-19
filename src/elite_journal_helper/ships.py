@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+
+from .paths import ASSETS_DIR
 from typing import Optional
 
 
@@ -71,8 +73,8 @@ def friendly_ship_name(raw_name: Optional[str]) -> str:
 
 def friendly_ship_icon_path(raw_name: Optional[str]) -> Path:
     _, icon_file = friendly_ship_info(raw_name)
-    return Path(__file__).resolve().parent / "assets" / "ships" / icon_file
+    return ASSETS_DIR / "ships" / icon_file
 
 
 def on_foot_icon_path() -> Path:
-    return Path(__file__).resolve().parent / "assets" / "ships" / "on_foot.png"
+    return ASSETS_DIR / "ships" / "on_foot.png"

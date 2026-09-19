@@ -4,13 +4,12 @@ import json
 import os
 import threading
 from datetime import datetime, timezone
-# from db import connect_db, init_db, save_state_snapshot, save_first_footfall
 from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
-from state import (
+from .state import (
     BodyInfo,
     CommanderState,
     commodity_key,
@@ -18,7 +17,7 @@ from state import (
     restore_cached_system,
     system_cache_keys,
 )
-from rules import (
+from .rules import (
     add_unique,
     looks_like_suit,
     record_special_alert,
@@ -1882,8 +1881,6 @@ class JournalMonitor(QObject):
         # until JournalMonitor and OverlayWindow have both been constructed.
         # Full-history construction/body indexes can be large, so load every
         # persisted JSON snapshot on the existing startup worker instead.
-        # self.db = connect_db()
-        # init_db(self.db)
         self.current_file: Optional[Path] = None
         self.position = 0
         self.lock = threading.Lock()
@@ -1982,13 +1979,9 @@ class JournalMonitor(QObject):
                         continue
                     apply_event(self.state, event)
 
-                    # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
-                    #     save_first_footfall(self.db, self.state, event)
-
         cache_current_system(self.state)
         save_fss_data(self.state, self.settings)
         save_construction_depot_history(self.state, self.settings)
-        # save_state_snapshot(self.db, self.state)
 
         self.position = self.current_file.stat().st_size
         self.state.log(f"Loaded {len(journals_to_read)} journal files")
@@ -2102,14 +2095,10 @@ class JournalMonitor(QObject):
                     }:
                         save_fss_data(self.state, self.settings)
 
-                    # if event.get("event") == "Touchdown" and event.get("FirstFootfall") is True:
-                    #     save_first_footfall(self.db, self.state, event)
-
                 self.position = f.tell()
 
             if changed:
-                # save_state_snapshot(self.db, self.state)
-                self.updated.emit()
+                        self.updated.emit()
 
     def start_async(self) -> None:
         """Load history off the GUI thread, then start live monitoring.
@@ -2223,8 +2212,6 @@ class JournalMonitor(QObject):
             self.state.log("Watchdog missing; UI will not live-update correctly.")
 
     def stop(self) -> None:
-        # save_state_snapshot(self.db, self.state)
-        # self.db.close()
 
         if self.observer:
             self.observer.stop()

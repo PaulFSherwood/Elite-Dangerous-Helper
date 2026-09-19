@@ -1,19 +1,41 @@
+# Local history / scratch copies
 PreviousVersion*/
-PreviousVersion*
-__pycache__/
-*.pyc
-Journal*.log
-*.log
-.env
-*.key
-*.pem
-id_rsa
-id_ed25519
+*.bak
+*.bak-*
+*.orig
+*.rej
+*.patch
+
+# Python
 __pycache__/
 *.py[cod]
-*.sqlite
-*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
 venv/
 build/
 dist/
+*.egg-info/
+
+# Runtime data / Elite journals
+Journal*.log
+*.log
+*.sqlite
+*.sqlite3
+
+# Secrets / local environment
+.env
+.env.*
+*.key
+*.pem
+id_rsa
+id_ed25519
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

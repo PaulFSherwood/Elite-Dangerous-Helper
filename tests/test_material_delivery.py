@@ -6,7 +6,7 @@ except ModuleNotFoundError:
     PyQt6 = None
 
 if PyQt6 is not None:
-    from construction_ui import MaterialData
+    from elite_journal_helper.construction_ui import MaterialData
 else:
     MaterialData = None
 

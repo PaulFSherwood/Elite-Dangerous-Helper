@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_ID="elite-journal-helper"
 APP_NAME="Elite Journal Helper"
-SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 INSTALL_DIR="$DATA_HOME/$APP_ID"
 APPLICATIONS_DIR="$DATA_HOME/applications"
@@ -11,35 +11,38 @@ ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
 DESKTOP_FILE="$APPLICATIONS_DIR/$APP_ID.desktop"
 ICON_FILE="$ICON_DIR/$APP_ID.png"
 
-[[ -f "$SOURCE_DIR/ed_journal_probe.py" ]] || {
-  echo "Run this installer from the project folder beside ed_journal_probe.py."
+[[ -f "$ROOT_DIR/ed_journal_probe.py" ]] || {
+  echo "Could not find ed_journal_probe.py in the project root."
   exit 1
 }
 
+rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$APPLICATIONS_DIR" "$ICON_DIR"
 
 tar --exclude='.git' --exclude='.github' --exclude='__pycache__' \
-    --exclude='*.pyc' --exclude='*.log' --exclude='.venv' \
-    --exclude='venv' --exclude='build' --exclude='dist' \
-    --exclude='install-user.sh' --exclude='uninstall-user.sh' \
-    --exclude='install-windows.ps1' --exclude='uninstall-windows.ps1' \
-    -cf - -C "$SOURCE_DIR" . | tar -xf - -C "$INSTALL_DIR"
+    --exclude='.pytest_cache' --exclude='*.pyc' --exclude='*.log' \
+    --exclude='*.sqlite' --exclude='*.sqlite3' --exclude='*.bak' \
+    --exclude='*.bak-*' --exclude='*.patch' --exclude='PreviousVersion*' \
+    --exclude='.venv' --exclude='venv' --exclude='build' --exclude='dist' \
+    --exclude='docs' --exclude='tests' --exclude='tools' --exclude='scripts' \
+    --exclude='requirements-dev.txt' \
+    -cf - -C "$ROOT_DIR" . | tar -xf - -C "$INSTALL_DIR"
 
 cp "$INSTALL_DIR/assets/ed_helper_icon.png" "$ICON_FILE"
 
-cat > "$DESKTOP_FILE" <<EOF
+cat > "$DESKTOP_FILE" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Version=1.0
 Name=$APP_NAME
-Comment=Elite Dangerous exploration journal overlay
+Comment=Elite Dangerous exploration and construction journal helper
 Exec=python3 "$INSTALL_DIR/ed_journal_probe.py"
 Icon=$APP_ID
 Terminal=false
 StartupNotify=true
 Categories=Game;Utility;
-Keywords=Elite;Dangerous;Exploration;Journal;Exobiology;
-EOF
+Keywords=Elite;Dangerous;Exploration;Journal;Exobiology;Colonisation;Construction;
+DESKTOP
 
 chmod 644 "$DESKTOP_FILE" "$ICON_FILE"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPLICATIONS_DIR" || true

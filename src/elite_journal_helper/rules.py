@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from state import BodyInfo, CommanderState
+from .state import BodyInfo, CommanderState
 
 
 def looks_like_suit(value: Optional[str]) -> bool:

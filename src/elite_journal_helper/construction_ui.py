@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from construction_rules import (
+from .construction_rules import (
     ColonisationCatalog,
     FacilityDescriptor,
     FacilityPrerequisite,
@@ -44,7 +44,7 @@ from construction_rules import (
     MaterialRequirement,
     asteroid_location_available,
 )
-from state import commodity_key
+from .state import commodity_key
 
 
 PRIMARY_GOALS = [
