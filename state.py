@@ -61,6 +61,7 @@ class CommanderState:
     system_address: Optional[int] = None
     body: Optional[str] = None
     station: Optional[str] = None
+    station_market_id: Optional[str] = None
     docked: bool = False
 
     nav_route: list[str] = field(default_factory=list)

@@ -51,6 +51,8 @@ FSS_COMPLETED_KEY = "fss/completed_systems"
 FSS_INDEXED_FILES_KEY = "fss/indexed_files"
 CONSTRUCTION_BODY_INDEX_KEY = "construction/body_index"
 CONSTRUCTION_BODY_INDEXED_FILES_KEY = "construction/body_indexed_files"
+CONSTRUCTION_DEPOT_HISTORY_KEY = "construction/depot_history"
+CONSTRUCTION_DEPOT_INDEXED_FILES_KEY = "construction/depot_indexed_files"
 CARRIER_INVENTORY_KEY = "construction/carrier_inventory"
 CARRIER_INVENTORY_KNOWN_KEY = "construction/carrier_inventory_known"
 CARRIER_KNOWN_COMMODITIES_KEY = "construction/carrier_known_commodities"
@@ -596,6 +598,230 @@ def save_fss_data(state: CommanderState, settings: QSettings) -> None:
     settings.sync()
 
 
+def load_construction_depot_history(state: CommanderState, settings: QSettings) -> None:
+    """Restore persistent Elite construction-site observations from all journals."""
+    raw = _settings_json_dict(settings, CONSTRUCTION_DEPOT_HISTORY_KEY)
+    cleaned: dict[str, dict] = {}
+    for market_id, record in raw.items():
+        if not isinstance(record, dict):
+            continue
+        key = str(record.get("market_id") or market_id or "").strip()
+        if not key:
+            continue
+        row = dict(record)
+        row["market_id"] = key
+        resources = row.get("resources", [])
+        row["resources"] = [dict(item) for item in resources if isinstance(item, dict)]
+        cleaned[key] = row
+    state.construction_depots = cleaned
+
+
+def save_construction_depot_history(state: CommanderState, settings: QSettings) -> None:
+    settings.setValue(
+        CONSTRUCTION_DEPOT_HISTORY_KEY,
+        json.dumps(state.construction_depots, sort_keys=True),
+    )
+    settings.sync()
+
+
+def _construction_resources(event: dict) -> list[dict]:
+    resources: list[dict] = []
+    for row in event.get("ResourcesRequired", []) or []:
+        if not isinstance(row, dict):
+            continue
+        commodity = (
+            row.get("Name_Localised")
+            or str(row.get("Name", "")).replace("$", "").replace("_name;", "").replace(";", "").title()
+        )
+        try:
+            required = int(row.get("RequiredAmount", 0) or 0)
+            delivered = int(row.get("ProvidedAmount", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if not commodity or required <= 0:
+            continue
+        resources.append({
+            "commodity": commodity,
+            "required": required,
+            "delivered": delivered,
+            "carrier": 0,
+            "source": "Journal depot",
+            "payment": row.get("Payment"),
+        })
+    return resources
+
+
+def _merge_construction_depot_record(state: CommanderState, update: dict) -> bool:
+    market_id = str(update.get("market_id", "") or "").strip()
+    if not market_id:
+        return False
+    previous = state.construction_depots.get(market_id, {})
+    merged = dict(previous)
+    for key in ("system", "system_address", "station", "body", "station_type"):
+        value = update.get(key)
+        if value not in (None, "", "Unknown body", "Construction depot"):
+            merged[key] = value
+        elif key not in merged and value is not None:
+            merged[key] = value
+
+    timestamp = str(update.get("timestamp", "") or "")
+    previous_timestamp = str(previous.get("timestamp", "") or "")
+    is_newer = not previous_timestamp or not timestamp or timestamp >= previous_timestamp
+    if is_newer:
+        for key in ("timestamp", "progress", "complete", "failed"):
+            if key in update:
+                merged[key] = update.get(key)
+        resources = update.get("resources")
+        if isinstance(resources, list) and resources:
+            merged["resources"] = [dict(item) for item in resources if isinstance(item, dict)]
+    elif not merged.get("resources") and update.get("resources"):
+        merged["resources"] = [dict(item) for item in update.get("resources", []) if isinstance(item, dict)]
+
+    merged["market_id"] = market_id
+    merged.setdefault("complete", False)
+    merged.setdefault("failed", False)
+    merged.setdefault("resources", [])
+    changed = merged != previous
+    if changed:
+        state.construction_depots[market_id] = merged
+        state.latest_construction_depot_key = market_id
+    return changed
+
+
+def _update_construction_station_identity(state: CommanderState, event: dict) -> bool:
+    market_id = event.get("MarketID")
+    if market_id is None:
+        return False
+    key = str(market_id)
+    if key not in state.construction_depots:
+        return False
+    return _merge_construction_depot_record(state, {
+        "market_id": key,
+        "system": event.get("StarSystem") or state.system,
+        "system_address": event.get("SystemAddress", state.system_address),
+        "station": event.get("StationName") or state.station,
+        "body": event.get("Body") or state.body,
+        "station_type": event.get("StationType") or "",
+        "timestamp": event.get("timestamp", ""),
+    })
+
+
+def _scan_construction_history_file(state: CommanderState, journal_path: Path) -> int:
+    """Index depot completion/failure plus later station names for one journal."""
+    before = json.dumps(state.construction_depots, sort_keys=True)
+    current_system: Optional[str] = None
+    current_address: Optional[int] = None
+    current_body: Optional[str] = None
+    current_station: Optional[str] = None
+    current_market_id: Optional[str] = None
+    interesting = (
+        "Location", "FSDJump", "CarrierJump", "SupercruiseExit", "ApproachBody",
+        "Touchdown", "Docked", "Undocked", "Market", "ColonisationConstructionDepot",
+    )
+    with journal_path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not any(name in line for name in interesting):
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            name = event.get("event")
+            if name in ("Location", "FSDJump", "CarrierJump"):
+                current_system = event.get("StarSystem") or current_system
+                current_address = event.get("SystemAddress", current_address)
+                current_body = event.get("Body") or current_body
+                if name == "Location":
+                    current_station = event.get("StationName")
+                    market = event.get("MarketID")
+                    current_market_id = str(market) if market is not None else None
+                    if current_market_id in state.construction_depots:
+                        _merge_construction_depot_record(state, {
+                            "market_id": current_market_id,
+                            "system": current_system,
+                            "system_address": current_address,
+                            "station": current_station,
+                            "body": current_body,
+                            "station_type": event.get("StationType") or "",
+                            "timestamp": event.get("timestamp", ""),
+                        })
+            elif name in ("SupercruiseExit", "ApproachBody", "Touchdown"):
+                current_body = event.get("Body") or event.get("BodyName") or current_body
+            elif name in ("Docked", "Market"):
+                current_system = event.get("StarSystem") or current_system
+                current_address = event.get("SystemAddress", current_address)
+                current_body = event.get("Body") or current_body
+                current_station = event.get("StationName") or current_station
+                market = event.get("MarketID")
+                if market is not None:
+                    current_market_id = str(market)
+                    if current_market_id in state.construction_depots:
+                        _merge_construction_depot_record(state, {
+                            "market_id": current_market_id,
+                            "system": current_system,
+                            "system_address": current_address,
+                            "station": current_station,
+                            "body": current_body,
+                            "station_type": event.get("StationType") or "",
+                            "timestamp": event.get("timestamp", ""),
+                        })
+            elif name == "Undocked":
+                current_station = None
+                current_market_id = None
+            elif name == "ColonisationConstructionDepot":
+                market = event.get("MarketID")
+                if market is None:
+                    continue
+                key = str(market)
+                station = current_station if current_market_id == key else ""
+                _merge_construction_depot_record(state, {
+                    "market_id": key,
+                    "system": event.get("StarSystem") or current_system,
+                    "system_address": event.get("SystemAddress", current_address),
+                    "station": station,
+                    "body": event.get("Body") or current_body or "Unknown body",
+                    "station_type": event.get("StationType") or "",
+                    "timestamp": event.get("timestamp", ""),
+                    "progress": event.get("ConstructionProgress"),
+                    "complete": bool(event.get("ConstructionComplete", False)),
+                    "failed": bool(event.get("ConstructionFailed", False)),
+                    "resources": _construction_resources(event),
+                })
+    after = json.dumps(state.construction_depots, sort_keys=True)
+    return 1 if after != before else 0
+
+
+def index_construction_depot_history(
+    state: CommanderState, settings: QSettings, journal_dir: Path
+) -> tuple[int, int]:
+    """Build a persistent all-journal construction index for restart-safe reconciliation."""
+    indexed_files = _settings_json_dict(settings, CONSTRUCTION_DEPOT_INDEXED_FILES_KEY)
+    files_scanned = 0
+    files_changed = 0
+    journals = sorted(journal_dir.glob("Journal*.log"), key=lambda p: p.stat().st_mtime)
+    for journal_path in journals:
+        try:
+            stat = journal_path.stat()
+        except OSError:
+            continue
+        signature = f"{stat.st_size}:{stat.st_mtime_ns}"
+        if indexed_files.get(journal_path.name) == signature:
+            continue
+        try:
+            files_changed += _scan_construction_history_file(state, journal_path)
+        except OSError:
+            continue
+        indexed_files[journal_path.name] = signature
+        files_scanned += 1
+    if files_scanned:
+        settings.setValue(
+            CONSTRUCTION_DEPOT_INDEXED_FILES_KEY,
+            json.dumps(indexed_files, sort_keys=True),
+        )
+        save_construction_depot_history(state, settings)
+    return files_scanned, files_changed
+
+
 def _as_float(value) -> Optional[float]:
     try:
         return float(value)
@@ -1111,9 +1337,12 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         set_system(state, event.get("StarSystem"), event.get("SystemAddress"), clear=False)
         state.body = event.get("Body", state.body)
         state.station = event.get("StationName")
+        market_id = event.get("MarketID")
+        state.station_market_id = str(market_id) if market_id is not None else None
         state.docked = bool(event.get("Docked", False))
         state.latitude = event.get("Latitude")
         state.longitude = event.get("Longitude")
+        _update_construction_station_identity(state, event)
         changed = True
 
     elif name == "Cargo":
@@ -1179,6 +1408,10 @@ def apply_event(state: CommanderState, event: dict) -> bool:
         if market_system:
             set_system(state, market_system, event.get("SystemAddress"), clear=False)
         state.station = event.get("StationName", state.station)
+        market_id = event.get("MarketID")
+        if market_id is not None:
+            state.station_market_id = str(market_id)
+        _update_construction_station_identity(state, event)
         changed = True
 
     elif name == "MarketBuy":
@@ -1278,45 +1511,27 @@ def apply_event(state: CommanderState, event: dict) -> bool:
 
     elif name == "ColonisationConstructionDepot":
         market_id = event.get("MarketID")
-        resources = []
-        for row in event.get("ResourcesRequired", []) or []:
-            commodity = (
-                row.get("Name_Localised")
-                or str(row.get("Name", "")).replace("$", "").replace("_name;", "").replace(";", "").title()
-            )
-            try:
-                required = int(row.get("RequiredAmount", 0) or 0)
-                delivered = int(row.get("ProvidedAmount", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            if not commodity or required <= 0:
-                continue
-            resources.append({
-                "commodity": commodity,
-                "required": required,
-                "delivered": delivered,
-                "carrier": 0,
-                "source": "Journal depot",
-                "payment": row.get("Payment"),
-            })
-
-        if market_id is not None and resources:
+        if market_id is not None:
             key = str(market_id)
-            state.construction_depots[key] = {
+            station = state.station if state.station_market_id == key else ""
+            if _merge_construction_depot_record(state, {
                 "market_id": key,
-                "system": state.system,
-                "system_address": state.system_address,
-                "station": state.station or "Construction depot",
-                "body": state.body or "Unknown body",
-                "timestamp": event.get("timestamp"),
+                "system": event.get("StarSystem") or state.system,
+                "system_address": event.get("SystemAddress", state.system_address),
+                "station": station,
+                "body": event.get("Body") or state.body or "Unknown body",
+                "station_type": event.get("StationType") or "",
+                "timestamp": event.get("timestamp", ""),
                 "progress": event.get("ConstructionProgress"),
                 "complete": bool(event.get("ConstructionComplete", False)),
                 "failed": bool(event.get("ConstructionFailed", False)),
-                "resources": resources,
-            }
-            state.latest_construction_depot_key = key
-            state.log(f"Construction depot updated: {len(resources)} commodities")
-            changed = True
+                "resources": _construction_resources(event),
+            }):
+                record = state.construction_depots.get(key, {})
+                state.log(
+                    f"Construction depot updated: {len(record.get('resources', []) or [])} commodities"
+                )
+                changed = True
 
     elif name == "Scan":
         if state.live_updates_enabled:
@@ -1582,12 +1797,14 @@ def apply_event(state: CommanderState, event: dict) -> bool:
     elif name == "SupercruiseExit":
         state.body = event.get("Body", state.body)
         state.station = None
+        state.station_market_id = None
         state.docked = False
         changed = True
 
     elif name == "SupercruiseEntry":
         state.body = None
         state.station = None
+        state.station_market_id = None
         state.docked = False
         changed = True
 
@@ -1611,11 +1828,16 @@ def apply_event(state: CommanderState, event: dict) -> bool:
 
     elif name == "Docked":
         state.station = event.get("StationName", state.station)
+        market_id = event.get("MarketID")
+        if market_id is not None:
+            state.station_market_id = str(market_id)
+        _update_construction_station_identity(state, event)
         state.docked = True
         changed = True
 
     elif name == "Undocked":
         state.station = None
+        state.station_market_id = None
         state.docked = False
         changed = True
 
@@ -1656,10 +1878,10 @@ class JournalMonitor(QObject):
         self.journal_dir = journal_dir
         self.settings = QSettings("GrrWooD", "EliteDangerousObservatory")
         self.state = CommanderState()
-        load_held_data(self.state, self.settings)
-        load_fss_data(self.state, self.settings)
-        load_construction_body_index(self.state, self.settings)
-        load_logistics_data(self.state, self.settings)
+        # Keep __init__ deliberately cheap.  The desktop window cannot be shown
+        # until JournalMonitor and OverlayWindow have both been constructed.
+        # Full-history construction/body indexes can be large, so load every
+        # persisted JSON snapshot on the existing startup worker instead.
         # self.db = connect_db()
         # init_db(self.db)
         self.current_file: Optional[Path] = None
@@ -1670,6 +1892,22 @@ class JournalMonitor(QObject):
 
     def initialize(self) -> None:
         self.state.live_updates_enabled = False
+
+        # These QSettings values contain the potentially large persisted indexes
+        # introduced for restart-safe construction reconciliation. Loading them
+        # here keeps them off the pre-window critical path and also exposes the
+        # slow stage through the startup overlay.
+        self.startup_progress.emit("Loading saved commander data…")
+        load_held_data(self.state, self.settings)
+        self.startup_progress.emit("Loading saved exploration index…")
+        load_fss_data(self.state, self.settings)
+        self.startup_progress.emit("Loading saved construction body index…")
+        load_construction_body_index(self.state, self.settings)
+        self.startup_progress.emit("Loading saved construction-site history…")
+        load_construction_depot_history(self.state, self.settings)
+        self.startup_progress.emit("Loading saved logistics state…")
+        load_logistics_data(self.state, self.settings)
+
         self.startup_progress.emit("Finding Elite journal files…")
         self.current_file = newest_journal_file(self.journal_dir)
         if not self.current_file:
@@ -1692,6 +1930,12 @@ class JournalMonitor(QObject):
             self.settings,
             self.journal_dir,
         )
+        self.startup_progress.emit("Reconciling construction-site history…")
+        depot_files_indexed, depot_files_changed = index_construction_depot_history(
+            self.state,
+            self.settings,
+            self.journal_dir,
+        )
         if files_indexed:
             self.state.log(
                 f"FSS history indexed: {files_indexed} files, "
@@ -1701,6 +1945,11 @@ class JournalMonitor(QObject):
             self.state.log(
                 f"Construction body index: {body_files_indexed} files, "
                 f"{bodies_added} bodies added"
+            )
+        if depot_files_indexed:
+            self.state.log(
+                f"Construction history: {depot_files_indexed} files checked, "
+                f"{depot_files_changed} files added/updated site records"
             )
 
         self.startup_progress.emit("Restoring carrier and logistics state…")
@@ -1738,6 +1987,7 @@ class JournalMonitor(QObject):
 
         cache_current_system(self.state)
         save_fss_data(self.state, self.settings)
+        save_construction_depot_history(self.state, self.settings)
         # save_state_snapshot(self.db, self.state)
 
         self.position = self.current_file.stat().st_size
@@ -1830,6 +2080,11 @@ class JournalMonitor(QObject):
                         "Market", "MarketBuy",
                     }:
                         save_logistics_data(self.state, self.settings)
+
+                    if event_name in {
+                        "ColonisationConstructionDepot", "Docked", "Location", "Market",
+                    }:
+                        save_construction_depot_history(self.state, self.settings)
 
                     if event.get("event") in {
                         "FSSDiscoveryScan",
