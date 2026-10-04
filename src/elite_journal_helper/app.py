@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
@@ -45,6 +46,14 @@ def main() -> None:
 
     args = parser.parse_args()
     _PROFILE_STARTUP = bool(args.profile_startup)
+
+    if (
+        sys.platform.startswith("linux")
+        and os.environ.get("WAYLAND_DISPLAY")
+        and os.environ.get("DISPLAY")
+        and not os.environ.get("QT_QPA_PLATFORM")
+    ):
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
 
     # Keep --help/--version lightweight by delaying Qt imports until after
     # argparse has handled metadata-only commands.

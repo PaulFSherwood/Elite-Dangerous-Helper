@@ -1324,7 +1324,8 @@ class OverlayWindow(QWidget):
             return
 
         current_geometry = self.geometry()
-        old_bottom = current_geometry.bottom()
+        current_frame_geometry = self.frameGeometry()
+        old_bottom = current_frame_geometry.bottom()
 
         if thin:
             # Save full-window state before changing flags or size.
@@ -1343,7 +1344,7 @@ class OverlayWindow(QWidget):
 
             new_width = max(current_geometry.width(), THIN_MIN_WIDTH)
             new_geometry = QRect(
-                current_geometry.x(),
+                current_frame_geometry.x(),
                 current_geometry.y(),
                 new_width,
                 THIN_HEIGHT,
