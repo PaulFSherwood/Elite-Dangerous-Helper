@@ -230,21 +230,24 @@ def _apply_carrier_transfer(state: CommanderState, transfer: dict) -> bool:
     if count <= 0:
         return False
 
+    def reset_baseline() -> None:
+        # A missing transfer happened while Observatory was not tracking, or
+        # the baseline was wrong. Do not silently clamp and keep lying.
+        state.carrier_inventory.pop(key, None)
+        if "*" in state.carrier_known_commodities:
+            state.carrier_known_commodities.clear()
+        else:
+            state.carrier_known_commodities.discard(key)
+        state.carrier_inventory_known = bool(state.carrier_known_commodities)
+        state.log(f"Carrier {key} baseline lost; reset after verifying inventory")
+
     direction = str(transfer.get("Direction", "")).strip().lower()
     current = max(0, int(state.carrier_inventory.get(key, 0) or 0))
     if direction == "tocarrier":
         state.carrier_inventory[key] = current + count
     elif direction == "toship":
         if count > current:
-            # A missing transfer happened while Observatory was not tracking, or
-            # the baseline was wrong. Do not silently clamp and keep lying.
-            state.carrier_inventory.pop(key, None)
-            if "*" in state.carrier_known_commodities:
-                state.carrier_known_commodities.clear()
-            else:
-                state.carrier_known_commodities.discard(key)
-            state.carrier_inventory_known = bool(state.carrier_known_commodities)
-            state.log(f"Carrier {key} baseline lost; reset after verifying inventory")
+            reset_baseline()
         else:
             state.carrier_inventory[key] = current - count
     else:

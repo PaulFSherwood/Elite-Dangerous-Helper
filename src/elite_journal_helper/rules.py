@@ -15,7 +15,11 @@ def signal_counts(event: dict) -> tuple[Optional[int], Optional[int]]:
     geo = 0
     found_any = False
 
-    for sig in event.get("Signals", []):
+    def add_signal(sig: object) -> None:
+        nonlocal bio, geo, found_any
+        if not isinstance(sig, dict):
+            return
+
         sig_type = str(sig.get("Type") or sig.get("Type_Localised") or "").lower()
         count = int(sig.get("Count", 0))
 
@@ -25,6 +29,9 @@ def signal_counts(event: dict) -> tuple[Optional[int], Optional[int]]:
         elif "geological" in sig_type:
             geo += count
             found_any = True
+
+    for sig in event.get("Signals", []):
+        add_signal(sig)
 
     if not found_any:
         return None, None

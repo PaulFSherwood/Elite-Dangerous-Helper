@@ -39,3 +39,6 @@ id_ed25519
 .idea/
 .DS_Store
 Thumbs.db
+
+# AI workflow notes
+AI_WORKFLOW.md
