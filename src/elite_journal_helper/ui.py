@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QStackedWidget,
 )
+from distro import name
 
 from .journal import JournalMonitor
 from .state import BodyInfo
@@ -1428,7 +1429,14 @@ class OverlayWindow(QWidget):
 
     def thin_target_html(self, body: BodyInfo) -> str:
         name = self.short_body_name(body)
-        parts = [f"<b>{name}</b>"]
+        subtype = (body.subtype or "").lower()
+        if "earthlike" in subtype or "earth-like" in subtype:
+            name_html = f"<b style='color:#22C55E;'>{name}</b>"
+        elif "water world" in subtype:
+            name_html = f"<b style='color:#60A5FA;'>{name}</b>"
+        else:
+            name_html = f"<b>{name}</b>"
+        parts = [name_html]
         if self.is_high_value_world(body) and body.mapped is not True:
             parts.append("<span style='color:#EF5350;'>◆</span>")
         bio = self.bio_progress_icons(body)
@@ -1565,10 +1573,26 @@ class OverlayWindow(QWidget):
             scanned_count = min(len(scanned), total)
             dots: list[str] = []
 
-            for index in range(total):
-                # Neutral silver means identified; dark gray means still unknown.
-                color = "#8B929A" if index < scanned_count else "#3A4149"
+            # Color identified planets according to their classification.
+            for body in scanned[:scanned_count]:
+                subtype = (body.subtype or "").lower()
+
+                if "earthlike" in subtype or "earth-like" in subtype:
+                    color = "#22C55E"  # Green: Earth-like World
+                elif "water world" in subtype:
+                    color = "#60A5FA"  # Blue: Water World
+                elif "high metal content" in subtype:
+                    color = "#A16207"  # Brown: High Metal Content World
+                elif "ammonia world" in subtype:
+                    color = "#7C3AED"  # Purple: Ammonia World
+                else:
+                    color = "#8B929A"  # Grey: Other scanned bodies
+
                 dots.append(f"<span style='color:{color};'>●</span>")
+
+            # Unidentified bodies remain dark grey.
+            for _ in range(total - scanned_count):
+                dots.append("<span style='color:#3A4149;'>●</span>")
 
             dot_text = "&nbsp;".join(dots)
             self.thin_status_label.setText(
@@ -1949,6 +1973,12 @@ class OverlayWindow(QWidget):
                 state.market_sources_by_system,
             )
             self.construction_panel.set_construction_depots(state.construction_depots)
+            self.construction_panel.auto_focus_docked_construction(
+                live_system=state.system or "",
+                docked=state.docked,
+                station_market_id=state.station_market_id,
+                depots=state.construction_depots,
+            )
             plan = self.construction_panel.plan
             tracked_system, locked = self.construction_panel.system_lock_state()
             self.set_system_lock_button_style(locked)

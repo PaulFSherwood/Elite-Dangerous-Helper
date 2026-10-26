@@ -4128,6 +4128,12 @@
         "reason": "Agricultural settlement support; +1 T2."
       }
     ],
+    "Minimal Expansion": [
+      {
+        "facility_id": "primary_port",
+        "reason": "Complete the primary port to establish a bridge colony. No additional construction required."
+      }
+    ],
     "Custom Plan": [],
     "Colonisation Supply Network": [
       {

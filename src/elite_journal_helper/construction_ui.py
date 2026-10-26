@@ -59,6 +59,7 @@ PRIMARY_GOALS = [
     "Population Center",
     "Balanced Colony",
     "Custom Plan",
+    "Minimal Expansion",
 ]
 
 SECONDARY_GOALS = [
@@ -353,6 +354,9 @@ class ConstructionPanel(QWidget):
         self._edit_plan_snapshot: Optional[PlanData] = None
         self.live_depot: Optional[dict[str, Any]] = None
         self.live_depot_resources: list[MaterialData] = []
+        # Retain journal depot records so selecting an existing build can
+        # immediately reconcile them without waiting for another journal event.
+        self._last_construction_depots: dict[str, dict] = {}
         self.ship_inventory: dict[str, int] = {}
         self.ship_inventory_known = False
         self.carrier_inventory: dict[str, int] = {}
@@ -362,6 +366,9 @@ class ConstructionPanel(QWidget):
         self.market_sources_by_system: dict[str, dict[str, str]] = {}
         self.active_focus: dict[str, Any] = self._load_active_focus()
         self._rendering_materials = False
+        # Only auto-select once per dock; manual focus changes while docked
+        # must not be immediately undone by subsequent journal refreshes.
+        self._auto_focus_dock_key = ""
         self._overview_compact_mode: Optional[bool] = None
 
         # Construction mode receives several filesystem/journal notifications for
@@ -1075,6 +1082,16 @@ class ConstructionPanel(QWidget):
         if facility.market_id or facility.construction_started or facility.status == "Complete":
             return False
         tracked_text = str(self.active_focus.get("tracked_at_utc", "") or "")
+        # A primary port may have been started before it was selected here.
+        # Only permit an older journal record when it is the sole unfinished
+        # depot with a materials list in this system.
+        existing_primary = (
+            facility.facility_id == "primary_port"
+            and len(candidates) == 1
+            and not candidates[0].get("complete", False)
+            and not candidates[0].get("failed", False)
+            and bool(candidates[0].get("resources"))
+        )
         for depot in sorted(candidates, key=lambda row: str(row.get("timestamp") or ""), reverse=True):
             if bool(depot.get("failed", False)):
                 continue
@@ -1083,7 +1100,7 @@ class ConstructionPanel(QWidget):
                 try:
                     tracked_dt = datetime.fromisoformat(tracked_text.replace("Z", "+00:00"))
                     depot_dt = datetime.fromisoformat(depot_text.replace("Z", "+00:00"))
-                    if depot_dt < tracked_dt - timedelta(seconds=5):
+                    if depot_dt < tracked_dt - timedelta(seconds=5) and not existing_primary:
                         continue
                 except ValueError:
                     pass
@@ -1162,6 +1179,7 @@ class ConstructionPanel(QWidget):
 
     def set_construction_depots(self, depots: dict[str, dict]) -> None:
         """Reconcile all Elite construction records, then feed the focused Materials view."""
+        self._last_construction_depots = dict(depots or {})
         candidates: list[dict[str, Any]] = []
         for depot in (depots or {}).values():
             if not isinstance(depot, dict):
@@ -1243,6 +1261,82 @@ class ConstructionPanel(QWidget):
 
         if depot_changed:
             self._render_materials()
+
+    def auto_focus_docked_construction(
+        self,
+        *,
+        live_system: str,
+        docked: bool,
+        station_market_id: Optional[str],
+        depots: dict[str, dict],
+    ) -> bool:
+        """Track the unfinished construction depot at the current dock, if known.
+
+        A construction-system lock protects the displayed plan, not the choice
+        of build *inside* that system. Never switch to a depot in another system
+        or mistake a normal commodity market for a construction project.
+        """
+        if not docked or live_system != self.system_name:
+            self._auto_focus_dock_key = ""
+            return False
+
+        market_id = str(station_market_id or "").strip()
+        if not market_id:
+            return False
+        dock_key = f"{live_system}:{market_id}"
+        if self._auto_focus_dock_key == dock_key:
+            return False
+
+        # A real journal depot with the *same MarketID* is required. Docking
+        # at a regular station, a carrier, or elsewhere must do nothing.
+        depot = next((
+            row for row in (depots or {}).values()
+            if isinstance(row, dict)
+            and str(row.get("market_id", "") or "") == market_id
+            and str(row.get("system", "") or live_system) == live_system
+        ), None)
+        if not depot or depot.get("complete") or depot.get("failed"):
+            return False
+
+        facility = next((
+            row for row in self.plan.facilities
+            if row.market_id == market_id and row.status not in ("Complete", "Skipped")
+        ), None)
+
+        # Primary ports may predate the plan and lack a stored MarketID.
+        # Only bind an unassigned one automatically for Minimal Expansion,
+        # and only if there is exactly one unfinished depot in this system.
+        if facility is None and self.plan.primary_goal == "Minimal Expansion":
+            active_depots = [
+                row for row in (depots or {}).values()
+                if isinstance(row, dict)
+                and str(row.get("system", "") or live_system) == live_system
+                and not row.get("complete") and not row.get("failed")
+            ]
+            unbound_primary = [
+                row for row in self.plan.facilities
+                if row.facility_id == "primary_port"
+                and not row.market_id
+                and row.status not in ("Complete", "Skipped")
+            ]
+            if len(active_depots) == 1 and len(unbound_primary) == 1:
+                facility = unbound_primary[0]
+
+        if facility is None:
+            return False
+
+        # Do not continually steal focus while docked. Re-arm on undock.
+        self._auto_focus_dock_key = dock_key
+        if self._is_active_focus_facility(facility):
+            return False
+
+        self._apply_depot_identity(facility, depot)
+        self._save_plan()
+        self._set_focus_facility(facility)
+        # Also works without the earlier cached-depot patch: existing materials
+        # are processed immediately rather than waiting for a new journal event.
+        self.set_construction_depots(depots)
+        return True
 
     def set_logistics_data(
         self,
@@ -3645,6 +3739,12 @@ class ConstructionPanel(QWidget):
         if missing:
             return f"Missing prerequisite: {', '.join(missing)}."
 
+        # The initial Primary Port is established through Elite's
+        # colonisation process. Do not block tracking just because
+        # Observatory has no confirmed orbital construction slots.
+        if facility.facility_id == "primary_port":
+            return ""
+
         if facility.preferred_site == "surface" and not self._location_is_real(facility.location):
             return "No compatible surface slot is currently assigned."
         if facility.preferred_site == "orbital" and not self._location_is_real(facility.location):
@@ -5417,6 +5517,7 @@ class ConstructionPanel(QWidget):
             self.next_reason_value.setToolTip(full_reason)
             self.set_next_current_button.setEnabled(
                 self._location_is_real(next_facility.location)
+                or next_facility.facility_id == "primary_port"
             )
             self.undo_focus_button.setEnabled(bool(self.plan.previous_current_build))
         else:
@@ -5562,6 +5663,9 @@ class ConstructionPanel(QWidget):
         self._save_plan()
         self._save_active_focus_record(facility)
         self._apply_plan()
+        # Replay depot data already loaded before the player selected this build.
+        if self._last_construction_depots:
+            self.set_construction_depots(self._last_construction_depots)
         # Tracking a build is primarily a materials workflow. Move the player to
         # the operational screen automatically; the Build Queue remains one click away.
         self.set_view_name("Materials")
